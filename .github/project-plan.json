@@ -1,0 +1,291 @@
+{
+  "labels": [
+    {
+      "name": "type:feature",
+      "color": "0e8a16",
+      "description": "Product capability"
+    },
+    {
+      "name": "type:bug",
+      "color": "d73a4a",
+      "description": "Incorrect behavior"
+    },
+    {
+      "name": "type:chore",
+      "color": "cfd3d7",
+      "description": "Setup and maintenance"
+    },
+    {
+      "name": "type:docs",
+      "color": "0075ca",
+      "description": "Documentation"
+    },
+    {
+      "name": "area:backend",
+      "color": "1d76db",
+      "description": "API, persistence and live updates"
+    },
+    {
+      "name": "area:frontend",
+      "color": "5319e7",
+      "description": "Web interface"
+    },
+    {
+      "name": "area:hardware",
+      "color": "fbca04",
+      "description": "Devices and MQTT adapters"
+    },
+    {
+      "name": "area:simulator",
+      "color": "bfdadc",
+      "description": "Deterministic simulation"
+    },
+    {
+      "name": "area:optimizer",
+      "color": "d4c5f9",
+      "description": "Energy scheduling and forecasts"
+    },
+    {
+      "name": "area:infra",
+      "color": "006b75",
+      "description": "CI and deployment"
+    },
+    {
+      "name": "priority:p0",
+      "color": "b60205",
+      "description": "Required before the main demo"
+    },
+    {
+      "name": "priority:p1",
+      "color": "d93f0b",
+      "description": "Improves the main demo"
+    },
+    {
+      "name": "priority:p2",
+      "color": "fef2c0",
+      "description": "Stretch goal"
+    }
+  ],
+  "milestones": [
+    {
+      "title": "M0 — Foundation and contracts",
+      "description": "Stable interfaces, authenticated access and a shared development workflow."
+    },
+    {
+      "title": "M1 — Live telemetry loop",
+      "description": "One real or simulated device reaches the dashboard through the complete data path."
+    },
+    {
+      "title": "M2 — Safe command loop",
+      "description": "A user command is validated, delivered and visibly acknowledged."
+    },
+    {
+      "title": "M3 — Simulation and optimization",
+      "description": "A reproducible scenario compares manual control against feasible scheduling."
+    },
+    {
+      "title": "M4 — Hackathon demo",
+      "description": "Deployment, rehearsal, backup path and a credible presentation."
+    },
+    {
+      "title": "M5 — Stretch goals",
+      "description": "Optional work after the core demo is complete."
+    }
+  ],
+  "issues": [
+    {
+      "id": "contracts",
+      "title": "Freeze telemetry, MQTT and command contracts",
+      "milestone": "M0 — Foundation and contracts",
+      "labels": [
+        "type:feature",
+        "area:backend",
+        "area:hardware",
+        "priority:p0"
+      ],
+      "body": "Agree the boundaries before parallel feature work.\n\nSuggested coordination: Jordan, Daniel, Stoyan and Mitko. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Validate the example telemetry against the exported v1 schema.\n- [ ] Agree topic ACLs, units, sign conventions, device capabilities, stale-data windows and payload/rate limits.\n- [ ] Write command and acknowledgement schemas with idempotency, expiry, ranges and device failure cases.\n- [ ] Agree versioned WebSocket events and optimizer inputs/outputs.\n\nStart a short-lived feature/contracts branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "auth",
+      "title": "Implement Supabase Auth and site authorization",
+      "milestone": "M0 — Foundation and contracts",
+      "labels": [
+        "type:feature",
+        "area:backend",
+        "area:frontend",
+        "priority:p0"
+      ],
+      "body": "Private telemetry and controls require tenant isolation before public deployment.\n\nSuggested coordination: Jordan and Stoyan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Validate JWT signature, issuer, audience and expiry; do not authorize from user-editable metadata.\n- [ ] Protect REST, WebSocket and commands with site membership/role checks.\n- [ ] Keep service secrets in backend environments and keep the application schema out of the Data API.\n- [ ] Test unauthenticated access and cross-site reads/writes/subscriptions.\n\nStart a short-lived feature/auth branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "registry",
+      "title": "Implement site/device registry and measurement history",
+      "milestone": "M1 — Live telemetry loop",
+      "labels": [
+        "type:feature",
+        "area:backend",
+        "priority:p0"
+      ],
+      "body": "Build authorized queries on the existing ORM foundation.\n\nSuggested coordination: Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Expose site/device reads scoped to the current user.\n- [ ] Add device provisioning, capabilities and configured operating limits.\n- [ ] Provide bounded UTC history queries with pagination and indexes.\n- [ ] Return empty, missing and unauthorized states clearly.\n\nStart a short-lived feature/registry branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "mqtt",
+      "title": "Ingest authenticated MQTT telemetry into PostgreSQL",
+      "milestone": "M1 — Live telemetry loop",
+      "labels": [
+        "type:feature",
+        "area:backend",
+        "area:hardware",
+        "priority:p0"
+      ],
+      "body": "Complete the first device-to-database path.\n\nSuggested coordination: Jordan and Daniel. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Run a persistent subscriber with reconnect/backoff and per-device broker ACLs.\n- [ ] Validate topic/payload IDs, capability, timestamp freshness and the telemetry schema.\n- [ ] Handle duplicate message_id safely; persist before notifying clients.\n- [ ] Show real and simulated devices using the same adapter-independent model.\n\nStart a short-lived feature/mqtt branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "websocket",
+      "title": "Stream authorized site events over WebSocket",
+      "milestone": "M1 — Live telemetry loop",
+      "labels": [
+        "type:feature",
+        "area:backend",
+        "priority:p0"
+      ],
+      "body": "Turn persisted observations into live client updates.\n\nSuggested coordination: Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Authorize site subscriptions before accepting them.\n- [ ] Bound subscriber queues and disconnect slow consumers safely.\n- [ ] Implement heartbeat, reconnect and REST snapshot recovery.\n- [ ] Demonstrate one backend instance; document the shared-fan-out requirement for multiple workers.\n\nStart a short-lived feature/websocket branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "dashboard",
+      "title": "Build the first live energy dashboard",
+      "milestone": "M1 — Live telemetry loop",
+      "labels": [
+        "type:feature",
+        "area:frontend",
+        "priority:p0"
+      ],
+      "body": "Make the data path visible with a focused, readable product screen.\n\nSuggested coordination: Stoyan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Show solar, signed grid flow, load, battery SOC and device freshness.\n- [ ] Use real API/WebSocket values and explicit loading/empty/error/offline states.\n- [ ] Keep charts and flow units consistent; show costs only when tariff/energy inputs exist.\n- [ ] Verify mobile layout, keyboard access and reconnect recovery.\n\nStart a short-lived feature/dashboard branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "command-service",
+      "title": "Persist and validate device commands",
+      "milestone": "M2 — Safe command loop",
+      "labels": [
+        "type:feature",
+        "area:backend",
+        "priority:p0"
+      ],
+      "body": "A command must have an auditable result rather than a publish-only success message.\n\nSuggested coordination: Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Add a command migration and authenticated command API.\n- [ ] Check tenant/role, capability, operating range, interlock, manual override and expiry.\n- [ ] Persist pending/published/applied/failed/expired with command_id and requested_by.\n- [ ] Test duplicates, expired commands, no acknowledgement and invalid device limits.\n\nStart a short-lived feature/command-service branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "hardware-command",
+      "title": "Apply and acknowledge one ESP32 demo command",
+      "milestone": "M2 — Safe command loop",
+      "labels": [
+        "type:feature",
+        "area:hardware",
+        "priority:p0"
+      ],
+      "body": "Close the reverse path with a safe controllable demo load.\n\nSuggested coordination: Daniel and Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Consume non-retained MQTT commands and deduplicate command_id.\n- [ ] Reject expired commands and unsafe limits locally as well as in the API.\n- [ ] Return applied/failed acknowledgement and read back the resulting state.\n- [ ] Demonstrate network-loss/manual-override behavior on a low-voltage load.\n\nStart a short-lived feature/hardware-command branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "assist",
+      "title": "Add Monitor and Assist controls with visible command results",
+      "milestone": "M2 — Safe command loop",
+      "labels": [
+        "type:feature",
+        "area:frontend",
+        "priority:p1"
+      ],
+      "body": "Give the user a trustworthy way to apply a recommendation.\n\nSuggested coordination: Stoyan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Monitor stays read-only; Assist explicitly applies a proposal.\n- [ ] Render command pending/applied/failed/expired states and manual overrides.\n- [ ] Disable controls without matching capability/permission or for stale devices.\n- [ ] Keep hardware Autopilot disabled until its failure handling passes.\n\nStart a short-lived feature/assist branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "simulator",
+      "title": "Build a deterministic office energy simulator",
+      "milestone": "M3 — Simulation and optimization",
+      "labels": [
+        "type:feature",
+        "area:simulator",
+        "priority:p0"
+      ],
+      "body": "Provide a reproducible fallback and a fair comparison scenario.\n\nSuggested coordination: Stoyan, Jordan and Mitko. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Model solar, grid, battery, HVAC and an initial small EV/charger scenario; expand to 10 EVs/3 chargers only after feasibility checks.\n- [ ] Use fixed seed, UTC intervals, consistent W/Wh units and the shared telemetry contract.\n- [ ] Conserve energy with battery efficiency/SOC bounds, charger capacity, EV arrivals/departures and comfort constraints.\n- [ ] Support reset/replay and test energy balance and infeasible demand.\n\nStart a short-lived feature/simulator branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "forecast-tariff",
+      "title": "Add documented solar/load forecasts and tariffs",
+      "milestone": "M3 — Simulation and optimization",
+      "labels": [
+        "type:feature",
+        "area:optimizer",
+        "area:backend",
+        "priority:p1"
+      ],
+      "body": "Use transparent demo inputs before introducing learned forecasting.\n\nSuggested coordination: Mitko and Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Expose interval forecasts and import/export tariffs with timezone and currency.\n- [ ] Mark forecasts separately from measurements and show assumptions.\n- [ ] Include flat-tariff, variable-tariff and poor-solar scenarios.\n- [ ] Compute energy cost from interval energy rather than instantaneous watts.\n\nStart a short-lived feature/forecast-tariff branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "optimizer",
+      "title": "Implement a constraint-aware scheduling baseline",
+      "milestone": "M3 — Simulation and optimization",
+      "labels": [
+        "type:feature",
+        "area:optimizer",
+        "priority:p0"
+      ],
+      "body": "A simple valid baseline is more useful than an untested optimality claim.\n\nSuggested coordination: Mitko and Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Accept the agreed site snapshot, forecasts, tariffs, EV deadlines and physical limits.\n- [ ] Return schedules, recommendations and estimated cost/peak/solar metrics.\n- [ ] Validate schedules independently; surface infeasibility and preserve manual overrides.\n- [ ] Compare against an unoptimized baseline; test cases with no saving.\n\nStart a short-lived feature/optimizer branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "comparison",
+      "title": "Compare manual and Autopilot simulation runs fairly",
+      "milestone": "M3 — Simulation and optimization",
+      "labels": [
+        "type:feature",
+        "area:frontend",
+        "area:simulator",
+        "priority:p1"
+      ],
+      "body": "Show where scheduling helps with reproducible evidence.\n\nSuggested coordination: Stoyan and Mitko. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Replay identical seed, initial conditions, weather, tariffs and deadlines.\n- [ ] Compare cost, peak, grid import, solar utilization, battery throughput and EV deadline completion.\n- [ ] Match or account for final SOC; report unserved energy and comfort violations.\n- [ ] Keep simulator Autopilot separate from hardware-control claims.\n\nStart a short-lived feature/comparison branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "deployment",
+      "title": "Deploy the frontend and persistent backend",
+      "milestone": "M4 — Hackathon demo",
+      "labels": [
+        "type:feature",
+        "area:infra",
+        "priority:p0"
+      ],
+      "body": "Run a stable demo with Supabase PostgreSQL and a private authenticated broker.\n\nSuggested coordination: Jordan and Stoyan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Verify CI on develop and release branches, including migration round trips.\n- [ ] Deploy web separately from the persistent API/MQTT worker; configure TLS, origins and server-only secrets.\n- [ ] Apply Alembic migrations through a controlled release step; never migrate the hosted DB from PR CI.\n- [ ] Verify readiness, authorized live updates, commands and reconnects in the deployed environment.\n\nStart a short-lived feature/deployment branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "demo",
+      "title": "Rehearse the complete demo and simulator fallback",
+      "milestone": "M4 — Hackathon demo",
+      "labels": [
+        "type:feature",
+        "area:hardware",
+        "area:simulator",
+        "priority:p0"
+      ],
+      "body": "The demo must survive device or internet failure.\n\nSuggested coordination: Whole team. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Rehearse telemetry -> dashboard -> command -> acknowledgement end to end.\n- [ ] Run a local deterministic simulation when hardware/cloud access fails.\n- [ ] Prepare a reset procedure and a short presentation showing measured comparison results.\n- [ ] Explain supported adapters, assumptions, limitations and next steps without claiming universal savings.\n\nStart a short-lived feature/demo branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "multisite",
+      "title": "Add multi-site portfolio and switching",
+      "milestone": "M5 — Stretch goals",
+      "labels": [
+        "type:feature",
+        "area:frontend",
+        "area:backend",
+        "priority:p2"
+      ],
+      "body": "Extend the already site-scoped model after the single-site demo works.\n\nSuggested coordination: Stoyan and Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Show Home/Workshop/Office with authorized membership and empty states.\n- [ ] Cancel old subscriptions on site switch and prevent cross-site event leakage.\n- [ ] Summarize costs only over comparable periods/currencies.\n\nStart a short-lived feature/multisite branch from develop. Link the PR to this issue and merge after CI passes."
+    },
+    {
+      "id": "adapter",
+      "title": "Add a second third-party device adapter",
+      "milestone": "M5 — Stretch goals",
+      "labels": [
+        "type:feature",
+        "area:hardware",
+        "priority:p2"
+      ],
+      "body": "Validate modularity with a real supported integration.\n\nSuggested coordination: Daniel and Jordan. GitHub assignees are intentionally unset until usernames are confirmed.\n\nAcceptance criteria:\n\n- [ ] Name one device/protocol and document its actual capabilities and limitations.\n- [ ] Normalize telemetry/commands to the existing contract without frontend vendor logic.\n- [ ] Test unsupported controls, connection loss and command acknowledgements.\n\nStart a short-lived feature/adapter branch from develop. Link the PR to this issue and merge after CI passes."
+    }
+  ]
+}

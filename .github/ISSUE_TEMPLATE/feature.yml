@@ -1,0 +1,23 @@
+name: Feature
+description: A scoped OptiMesh feature
+labels: ['type:feature']
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What should the user or device be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include observable success and failure behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and contracts
+      description: Link related issues and API/device contract changes.
