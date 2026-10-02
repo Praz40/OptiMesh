@@ -38,18 +38,18 @@ jobs:
       run:
         working-directory: services/api
     env:
-      DATABASE_URL: postgresql+psycopg://optimesh:optimesh@localhost:5432/optimesh
-      TEST_DATABASE_URL: postgresql+psycopg://optimesh:optimesh@localhost:5432/optimesh
+      DATABASE_URL: postgresql+psycopg://optimesh_ci:optimesh@localhost:5432/optimesh
+      TEST_DATABASE_URL: postgresql+psycopg://optimesh_ci:optimesh@localhost:5432/optimesh
     services:
       postgres:
         image: postgres:17
         env:
           POSTGRES_DB: optimesh
-          POSTGRES_USER: optimesh
+          POSTGRES_USER: optimesh_ci
           POSTGRES_PASSWORD: optimesh
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U optimesh -d optimesh"
+          --health-cmd "pg_isready -U optimesh_ci -d optimesh"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v7
