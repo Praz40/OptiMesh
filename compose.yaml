@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: optimesh
+      POSTGRES_USER: optimesh
+      POSTGRES_PASSWORD: optimesh
+    ports: ['127.0.0.1:5432:5432']
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U optimesh -d optimesh']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  api:
+    profiles: [api]
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://optimesh:optimesh@db:5432/optimesh
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports: ['127.0.0.1:8000:8000']
+    depends_on:
+      db:
+        condition: service_healthy
+  migrate:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://optimesh:optimesh@db:5432/optimesh
+    command: ['/app/.venv/bin/alembic', 'upgrade', 'head']
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
