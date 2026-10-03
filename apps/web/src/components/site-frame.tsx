@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { ModeSwitch } from "@/components/mode-switch";
+import { useMySites } from "@/hooks/use-my-sites";
 import { useNow } from "@/hooks/use-now";
 import { useSiteLive, type Connection } from "@/hooks/use-site-live";
 import { useSiteMode } from "@/hooks/use-site-mode";
@@ -44,6 +45,17 @@ function SiteSwitcher({ siteId, tab }: { siteId: string; tab: string }) {
         ))}
       </select>
     </label>
+  );
+}
+
+/** For the signed-in owner only: where to add devices and see how to connect them. */
+function OwnerLink({ siteId }: { siteId: string }) {
+  const { state } = useMySites();
+  if (state.status !== "ready" || !state.sites.some((site) => site.id === siteId)) return null;
+  return (
+    <Link className="button" href={`/my-sites/${siteId}`}>
+      Добави устройство
+    </Link>
   );
 }
 
@@ -99,6 +111,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
           <h1>{site.name}</h1>
         </div>
         <div className="head-actions">
+          <OwnerLink siteId={siteId} />
           <ModeSwitch mode={mode} onSelect={select} />
           <SiteSwitcher siteId={siteId} tab={tab} />
           <LivePill connection={connection} updatedAt={site.summary.updated_at} />

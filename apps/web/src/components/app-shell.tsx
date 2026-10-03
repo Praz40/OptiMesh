@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { Account, MySitesLink } from "@/components/account";
 import { BrandMark, MenuIcon, PortfolioIcon, SimulatorIcon, SiteIcon } from "@/components/icons";
+import { useAuth } from "@/hooks/use-auth";
 import { useSites } from "@/hooks/use-sites";
 import type { Site } from "@/lib/api";
 import { formatPower, siteHealth } from "@/lib/energy";
@@ -53,6 +55,7 @@ function SidebarFooter() {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const sites = useSites();
+  const { state: auth } = useAuth();
   const [open, setOpen] = useState(false);
 
   return (
@@ -89,6 +92,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <SimulatorIcon />
             Симулатор
           </Link>
+          <MySitesLink auth={auth} pathname={pathname} />
         </nav>
         <nav className="nav-section" aria-labelledby="sites-heading">
           <p className="nav-heading" id="sites-heading">
@@ -101,6 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {sites.status === "loading" && <p className="muted" style={{ padding: "0 10px" }}>Зареждане…</p>}
           {sites.status === "error" && <p className="muted" style={{ padding: "0 10px" }}>Недостъпно</p>}
         </nav>
+        <Account />
         <SidebarFooter />
       </aside>
       <main className="content">{children}</main>
