@@ -366,7 +366,13 @@ def main() -> None:
     tls = tls_context(settings)
     try:
         asyncio.run(
-            simulator.run(args.mqtt_host, args.mqtt_port, settings.mqtt_username, password, tls)
+            simulator.run(
+                args.mqtt_host,
+                args.mqtt_port,
+                settings.mqtt_username.get_secret_value() if settings.mqtt_username else None,
+                password,
+                tls,
+            )
         )
     except KeyboardInterrupt:
         pass

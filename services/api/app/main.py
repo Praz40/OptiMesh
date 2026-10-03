@@ -87,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="Database unavailable") from None
         return {"status": "ready"}
 
+    @application.get("/status")
     @application.get("/api/v1/status")
     def status() -> dict[str, str]:
         """Pipeline status for the dashboard; MQTT is 'disabled' when not configured."""

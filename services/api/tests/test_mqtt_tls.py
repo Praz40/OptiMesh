@@ -49,12 +49,28 @@ def ca_file(tmp_path: Path) -> Path:
     return path
 
 
-def test_tls_is_off_by_default() -> None:
+def backend_settings(**changes: Any) -> Settings:
+    return Settings(
+        _env_file=None,
+        **(
+            {
+                "database_url": "postgresql+psycopg://test@localhost/test",
+                "mqtt_host": "broker.local",
+                "mqtt_username": "backend",
+                "mqtt_password": "test-only",
+                "mqtt_client_id": "test-backend",
+            }
+            | changes
+        ),
+    )
+
+
+def test_tls_is_secure_by_default() -> None:
     settings = Settings(_env_file=None)
-    assert settings.mqtt_tls is False
+    assert settings.mqtt_tls is True
     assert settings.mqtt_ca_file is None
-    assert settings.mqtt_port == 1883
-    assert tls_context(settings) is None
+    assert settings.mqtt_port == 8883
+    assert tls_context(settings).check_hostname is True
 
 
 def test_tls_settings_are_read_from_the_environment(
@@ -76,7 +92,7 @@ def test_missing_ca_file_is_rejected_at_startup(tmp_path: Path) -> None:
 
 def test_ca_file_without_tls_is_rejected(ca_file: Path) -> None:
     with pytest.raises(ValidationError, match="MQTT_TLS is false"):
-        Settings(_env_file=None, mqtt_ca_file=ca_file)
+        Settings(_env_file=None, mqtt_tls=False, mqtt_ca_file=ca_file)
 
 
 def test_tls_verifies_certificate_and_hostname_with_the_system_trust_store() -> None:
@@ -98,7 +114,7 @@ def test_tls_trusts_the_configured_ca(ca_file: Path) -> None:
 def test_invalid_ca_file_fails_when_the_api_starts(tmp_path: Path) -> None:
     broken = tmp_path / "broken.pem"
     broken.write_text("not a certificate", encoding="utf-8")
-    settings = Settings(_env_file=None, mqtt_host="broker", mqtt_tls=True, mqtt_ca_file=broken)
+    settings = backend_settings(mqtt_ca_file=broken)
     with pytest.raises(ssl.SSLError):
         create_app(settings)
 
@@ -115,9 +131,8 @@ def test_bridge_passes_the_tls_context_to_the_mqtt_client(
         calls.append({"args": args, **kwargs})
         raise Stop
 
-    monkeypatch.setattr(mqtt.aiomqtt, "Client", fake_client)
-    settings = Settings(
-        _env_file=None,
+    monkeypatch.setattr(mqtt, "ReliableClient", fake_client)
+    settings = backend_settings(
         mqtt_host="broker.local",
         mqtt_port=8883,
         mqtt_tls=True,
@@ -132,7 +147,7 @@ def test_bridge_passes_the_tls_context_to_the_mqtt_client(
     assert isinstance(context, ssl.SSLContext)
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname is True
-    assert "tls_insecure" not in call
+    assert call["tls_insecure"] is False
 
 
 def test_bridge_without_tls_connects_in_plain_text(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -145,9 +160,9 @@ def test_bridge_without_tls_connects_in_plain_text(monkeypatch: pytest.MonkeyPat
         calls.append(kwargs)
         raise Stop
 
-    monkeypatch.setattr(mqtt.aiomqtt, "Client", fake_client)
+    monkeypatch.setattr(mqtt, "ReliableClient", fake_client)
     bridge = MqttBridge(
-        Settings(_env_file=None, mqtt_host="127.0.0.1"),
+        Settings(_env_file=None, mqtt_host="127.0.0.1", mqtt_tls=False, mqtt_port=1883),
         Platform(None, stale_after_s=15, command_ttl_s=15),
     )
     with pytest.raises(Stop):
