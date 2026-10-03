@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CommandAcknowledgement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "command_id",
+    "site_id",
+    "device_id",
+    "observed_at",
+    "status",
+    "error_code",
+    "state"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "command_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "device_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "applied",
+        "rejected",
+        "failed"
+      ]
+    },
+    "error_code": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "expired",
+        "invalid_payload",
+        "unsupported_command",
+        "out_of_range",
+        "interlock",
+        "hardware_failure",
+        null
+      ]
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
