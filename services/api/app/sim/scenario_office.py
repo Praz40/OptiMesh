@@ -5,15 +5,29 @@ resolution, EUR/MWh, source: api.energy-charts.info/price?bzn=BG).
 Everything else (roof size, loads, cars, fees) is an ASSUMPTION that still needs review.
 
 Run `uv run python -m app.sim.scenario_office` from services/api to print the comparison.
+Every printed run is listed in `comparisons()` and pinned in tests/test_sim.py.
 """
 
 import math
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import numpy as np
 
-from app.sim.core import EV, Battery, Controller, Scenario, baseline, run
+from app.sim.core import (
+    EV,
+    Action,
+    Battery,
+    Controller,
+    Scenario,
+    State,
+    baseline,
+    ev_present,
+    ev_remaining,
+    player_action,
+    run,
+)
 from app.sim.optimizer import autopilot, optimum
 
 # EUR/MWh for 00:00 -> 23:45 local time on 2026-09-30.
@@ -108,17 +122,75 @@ def office(
     )
 
 
+def careful_human(s: Scenario, st: State) -> Action:
+    """One simple rule, applied by a careful person: wait for the cheap hours, then the car
+    that leaves first charges first.
+
+    Before 10:00 local time no car is plugged in. 10:00 is the first quarter hour of the cheap
+    midday prices (54.99 EUR/MWh, after 149.55 at 09:45). From 10:00 on, at every step, the cars
+    that are present and still need energy are sorted by their departure as known at that step
+    (so the person learns at 12:00 that ev5 leaves at 14:30), and the first `n_chargers` (3)
+    charge at full power (`EV.max_kw`, 11 kW). The battery is on "auto" all day: it charges with
+    the solar surplus and discharges to cover the deficit. `limit_guard` keeps the import under
+    the 30 kW connection (see `player_action`).
+    """
+    if st.t < step_of("10:00"):
+        return player_action(s, st, "auto", ())
+    cars = sorted(
+        (e for e in s.evs if ev_present(e, st.t) and ev_remaining(st, e) > 1e-6),
+        key=lambda e: e.depart_known_at(st.t),
+    )
+    return player_action(s, st, "auto", [e.id for e in cars[: s.n_chargers]])
+
+
+def without_battery(s: Scenario) -> Scenario:
+    """The same day with no usable battery: its power is set to 0 kW (`Battery.max_kw = 0`).
+
+    `step()` then never charges or discharges it, whatever the controller asks. It stays at
+    its starting charge (30 % of 30 kWh) all day, so the score's end-of-day battery value is
+    zero. Capacity, start charge and every other input are unchanged.
+    """
+    return replace(s, battery=replace(s.battery, max_kw=0.0))
+
+
+FLAT_BUY_EUR_KWH = 0.20
+FLAT_SELL_EUR_KWH = 0.05
+
+
+def flat_tariff(s: Scenario) -> Scenario:
+    """The same day with one price at every step: import 0.20 EUR/kWh, export 0.05 EUR/kWh.
+
+    These two prices replace the day-ahead price and the 0.07 EUR/kWh fees. Solar, the cloud,
+    the load, the cars, the early leaver and the battery are unchanged.
+    """
+    return replace(
+        s,
+        price_buy=np.full(s.steps, FLAT_BUY_EUR_KWH),
+        price_sell=np.full(s.steps, FLAT_SELL_EUR_KWH),
+    )
+
+
+def comparisons() -> tuple[tuple[str, Scenario, Controller], ...]:
+    """Every run printed by `main()`: label, scenario, controller. One score formula for all."""
+    day = office()
+    flat = flat_tariff(day)
+    return (
+        ("no management", day, baseline),
+        ("Autopilot", day, autopilot),
+        ("optimum (knows the future)", day, optimum),
+        ("one simple rule (a person)", day, careful_human),
+        ("Autopilot, no battery", without_battery(day), autopilot),
+        ("flat tariff, no management", flat, baseline),
+        ("flat tariff, Autopilot", flat, autopilot),
+    )
+
+
 def main() -> None:
     scenario = office()
-    controllers: tuple[tuple[str, Controller], ...] = (
-        ("no management", baseline),
-        ("Autopilot", autopilot),
-        ("optimum (knows the future)", optimum),
-    )
     print(f"{scenario.name}: {scenario.steps} steps of {scenario.step_minutes} min")
-    for label, controller in controllers:
+    for label, variant, controller in comparisons():
         started = time.perf_counter()
-        result = run(scenario, controller).score
+        result = run(variant, controller).score
         print(
             f"{label:28s} {result.total_eur:6.2f} EUR | import {result.grid_import_kwh:6.1f} kWh"
             f" | peak {result.peak_kw:4.1f} kW | cars ready {result.evs_ready}/{result.evs_total}"
