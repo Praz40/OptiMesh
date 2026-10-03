@@ -1,76 +1,147 @@
 # OptiMesh
 
-Hackathon foundation for a modular energy-management platform. The full product roadmap is not implemented; the backlog is GitHub issues #2–#18, defined in [.github/project-plan.json](.github/project-plan.json).
+**Connect. Predict. Optimize.**
 
-**Frontend:** Next.js App Router, TypeScript, Tailwind CSS.
-**Backend:** Python 3.12, FastAPI, SQLAlchemy, psycopg, Alembic.
-**Database:** PostgreSQL, hosted in Supabase when deployed.
+OptiMesh is an energy autopilot for one site (a home, a workshop or an office): it measures every device, forecasts sun and price, and plans when each device runs.
+
+[![CI](https://github.com/Praz40/OptiMesh/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Praz40/OptiMesh/actions/workflows/ci.yml?query=branch%3Amain)
+
+## Накратко
+
+OptiMesh свързва устройствата на един обект чрез общ MQTT договор, показва живите им измервания в табло и изпраща команди, които стават „Applied“ едва след потвърждение от устройството. Бекендът прогнозира слънцето, товара и цената за следващите 24 часа, а Autopilot (засега само в симулация) решава кога да се зареждат колите и батерията. В един симулиран офисен ден с борсовите цени за България от 30.09.2026 Autopilot сваля разхода от 27,77 на 18,24 EUR и зарежда навреме и 10-те коли; това е симулация с допуснати товари и коли, а не измерване на реален обект.
+
+## What it does
+
+The demo has three acts.
+
+**1. Connect.** Devices (an ESP32 or the device simulator) send telemetry over MQTT in one shared contract, and the dashboard shows every site live over a WebSocket.
+Flip a switch on the dashboard and the command travels back to the device; the log says `Applied` only after the device acknowledges it.
+
+**2. Predict.** For each site the API forecasts the next 24 hours of solar, load and price, prices today's grid energy and proposes commands (`/forecast`, `/costs`, `/recommendations`).
+Every forecast lists its assumptions. The dashboard does not show these yet, so the demo opens them in the API docs at http://127.0.0.1:8000/docs.
+
+**3. Optimize.** In the `/simulator` game you run an office day by hand (10 cars, 3 chargers, a battery and solar), then Autopilot runs the very same day and the results compare cost, peak and cars charged.
+In the terminal, a linear-programming Autopilot plans an office day on real day-ahead prices; its numbers are under [Results](#results).
+
+![The /simulator game: run an office day by hand, then compare it with Autopilot](docs/images/simulator.png)
+
+## Architecture
+
+```mermaid
+flowchart LR
+  ESP["ESP32<br/>telemetry only"]
+  SIM["Device simulator<br/>app/simulator.py"]
+  BR[("MQTT broker<br/>Mosquitto")]
+  API["API<br/>FastAPI"]
+  DB[("PostgreSQL")]
+  WEB["Dashboard<br/>Next.js"]
+
+  ESP -- "1 telemetry" --> BR
+  SIM -- "1 telemetry" --> BR
+  BR -- "2 telemetry" --> API
+  API -- "3 store" --> DB
+  API -- "4 WebSocket: snapshot" --> WEB
+  WEB -- "5 REST: command" --> API
+  API -- "6 command" --> BR
+  BR -- "7 command" --> SIM
+  SIM -- "8 ack" --> BR
+  BR -- "9 ack" --> API
+  API -- "10 WebSocket: command status" --> WEB
+```
+
+Steps 1–4 carry measurements to the dashboard; steps 5–10 carry a command back and its acknowledgement. The ESP32 firmware does not accept commands yet, so the device simulator closes the return path. Telemetry can also arrive over HTTP (`POST /api/v1/telemetry`). The scenario simulator and the `/simulator` game run in memory and use none of this.
+
+- **Dashboard** (`apps/web`): Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, vitest.
+- **API** (`services/api`): Python 3.12, FastAPI, SQLAlchemy, Alembic, psycopg, Pydantic, aiomqtt, PyJWT; dependencies managed with uv.
+- **Autopilot** (`services/api/app/sim`): NumPy and SciPy `linprog` with the HiGHS solver.
+- **Database**: PostgreSQL 17 locally (Docker Compose) and in CI; Supabase when hosted.
+- **Broker**: Mosquitto 2, anonymous and bound to localhost for development; TLS with backend credentials on a Raspberry Pi for hardware.
+- **Firmware** (`firmware/esp32-telemetry`): ESP-IDF through PlatformIO (`espressif32@6.9.0`), MQTT over TLS.
+- **CI**: GitHub Actions, `frontend` and `backend` jobs on every pull request into `develop` or `main`.
 
 ## What works now
 
-The first vertical slice runs end to end, in both directions:
+- **One device contract (v1)**: telemetry, commands and acknowledgements over MQTT. The hardware-facing spec is [docs/contracts.md](docs/contracts.md); JSON Schemas and examples are in `contracts/`. Telemetry ingestion is idempotent per `message_id`, over MQTT or `POST /api/v1/telemetry`.
+- **Live loop in both directions**: the MQTT bridge stores telemetry in PostgreSQL and streams a snapshot of each site over `/api/v1/sites/{site_id}/live`. Commands are validated against the device's capabilities and limits and go `pending → sent → applied / rejected / expired / failed`; only the device's acknowledgement makes a command `applied`.
+- **MQTT over verified TLS** for the Raspberry Pi broker; plain MQTT is accepted only for an anonymous local broker. See [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md).
+- **Forecast, costs and recommendations** (API only, Bulgarian texts):
+  - `GET /api/v1/sites/{site_id}/forecast`: the next 24 hours, hourly: expected solar (clear-sky curve × installed inverter capacity × 0.85), load (the past week's average at that hour, or the current consumption) and import/export prices, with the assumptions listed.
+  - `GET /api/v1/sites/{site_id}/costs`: today's energy cost at the grid meter (local day), from interval energy.
+  - `GET /api/v1/sites/{site_id}/recommendations`: up to five proposed commands with the reason and a rough saving. Nothing is sent; applying one goes through `POST /api/v1/sites/{site_id}/devices/{device_id}/commands`.
+- **Dashboard**: a Portfolio of all sites; per site an Overview (KPI tiles, animated energy flow, plain-language insights, power chart, flexible devices with switch and power-limit controls, recent commands), a Devices page and an Activity page with the command history.
+- **Forecast tab** („Прогноза“, `/sites/{site_id}/forecast`): expected solar and load for the next 24 hours on one chart and import/export prices on a separate step chart, marked as a forecast and listing the API's assumptions.
+- **Costs tab** („Разходи“, `/sites/{site_id}/costs`): today's cost so far at the grid meter, energy imported and exported, the projected day cost and an hourly table with the assumptions, plus a "cost now" tile on the Overview (grid power × this hour's price).
+- **Monitor and Assist modes** (site header, remembered per site in the browser): „Наблюдение“ is read-only and the default; „Асистент“ lists the API's recommendations, sends one only on „Приложи“ and follows it to `applied`, `rejected`, `expired` or `failed`; „Автопилот“ is shown but disabled for real sites.
+- **`/simulator` game**: an office day by hand, then the same day with a rule-based Autopilot, compared on cost, peak and cars charged. It runs in the browser and needs no backend.
+- **Scenario simulator and Autopilot** (`services/api/app/sim`): a deterministic office day (10 EVs, 3 chargers, battery, solar, Bulgarian day-ahead prices) and a rolling-horizon linear-programming scheduler. See [Results](#results).
+- **Device simulator** (`python -m app.simulator`): virtual devices for the demo sites, speaking the same MQTT contract as hardware; `--include-hardware` also stands in for the ESP32.
+- **ESP32 firmware** (`firmware/esp32-telemetry`): publishes telemetry over TLS to the Raspberry Pi broker (reported in PR #22; CI does not build the firmware). See its [README](firmware/esp32-telemetry/README.md).
+- **Authenticated provisioning and history** (`/sites`): Supabase bearer-token verification, site and device provisioning and paginated UTC history, owner-scoped. See [docs/sites-api.md](docs/sites-api.md).
+- **Database**: one Alembic chain `0001 → 0002 → 0003`; CI runs the migration round trip against PostgreSQL 17. Demo seed: Home, Workshop (where the physical ESP32 lives) and Office, with fixed UUIDs. See [docs/database.md](docs/database.md).
 
-```text
-ESP32 / simulator --MQTT--> API --> PostgreSQL
-                             +--WebSocket--> dashboard
-dashboard --REST--> API --MQTT--> device --ack--> API --WebSocket--> dashboard
-```
+**Not built yet**: authentication on `/api/v1`, dashboard screens for the forecast and costs, Autopilot on real devices, ESP32 commands and deployment. Details are under [Limitations](#limitations).
 
-- **Device contract v1**: telemetry, command and ack over MQTT. The hardware-facing spec is in [docs/contracts.md](docs/contracts.md), with JSON Schemas and examples in `contracts/`.
-- **API** (`/api/v1`): site/device registry, measurement history, idempotent telemetry ingestion (MQTT or `POST /api/v1/telemetry`), a live WebSocket per site, and commands that are validated against device capabilities. Commands are persisted with the `pending → sent → applied/rejected/expired/failed` lifecycle.
-- **Simulator**: virtual devices for the demo sites, speaking the same MQTT contract as hardware. It can stand in for the ESP32 with `--include-hardware`.
-- **Dashboard**: a Portfolio page (all sites) and a Site page with KPIs, an animated energy flow, a live device list with switch and power-limit controls, and a command log.
-- Demo seed: Home, Workshop (where the physical ESP32 lives) and Office, with fixed UUIDs.
-- **Scenario simulator and Autopilot** (`services/api/app/sim`, no API or UI yet): a deterministic office day (10 EVs, 3 chargers, battery, solar, Bulgarian day-ahead prices) and a rolling-horizon LP scheduler. `uv run --frozen python -m app.sim.scenario_office` from services/api prints the no-management / Autopilot / perfect-foresight comparison. This is separate from the MQTT device simulator above.
-- **Authenticated provisioning and history** (`/sites`): Supabase bearer-token verification, site and device provisioning and paginated UTC history, owner-scoped. See [below](#authenticated-provisioning-and-history-sites).
+## Results
 
-Not built yet: authentication on `/api/v1` and the WebSocket (any client can read and command; **keep the API on localhost or a trusted LAN**), tariffs/costs and forecasts in the live slice, an API and screen for the scenario simulator (the game), and deployment.
-
-## Run the live demo
-
-Five terminals (or background them), from the repository root:
-
-```sh
-docker compose up -d db mqtt                               # PostgreSQL + Mosquitto
-cd services/api && cp .env.example .env && uv sync --frozen --python 3.12
-uv run --frozen alembic upgrade head && uv run --frozen python -m app.seed
-uv run --frozen uvicorn app.main:app --reload              # API on :8000
-uv run --frozen python -m app.simulator                    # virtual devices (add --hour 12 for midday sun)
-npm ci && npm run dev                                      # dashboard on :3000 (repo root)
-```
-
-Open http://localhost:3000, pick a site and flip a switch. The command log shows `Applied` only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
-
-### MQTT over TLS
-
-The hardware team's broker (Mosquitto on the Raspberry Pi) uses TLS on port 8883 with a username/password and per-device ACLs. Point the API at it in services/api/.env:
+One simulated office day, from `services/api`:
 
 ```sh
-MQTT_HOST=broker.example.lan        # must match the broker certificate (DNS name or IP in its SAN)
-MQTT_PORT=8883
-MQTT_TLS=true
-MQTT_CA_FILE=/path/to/broker-ca.crt # CA that signed the broker certificate
-MQTT_USERNAME=...
-MQTT_PASSWORD=...
-MQTT_CLIENT_ID=optimesh-backend-demo
+uv run --frozen python -m app.sim.scenario_office
 ```
 
-TLS defaults to enabled. With `MQTT_TLS=true` the API's MQTT bridge and `python -m app.simulator` verify the broker certificate chain and hostname; there is no setting to disable verification. A missing or unreadable `MQTT_CA_FILE` stops the API at startup, and `MQTT_CA_FILE` without `MQTT_TLS=true` is rejected so credentials are never sent in plain text by mistake. The local `docker compose` broker explicitly sets `MQTT_TLS=false` and port 1883; remote plaintext is rejected. Set a stable `MQTT_CLIENT_ID` and use separate backend credentials. `MQTT_CA_CERT` remains supported for existing Pi configurations.
+Output reproduced for this README on 2026-10-03 at `develop` 5d1a657 (the per-run milliseconds are left out):
 
-## Quick start
+| Office with 10 EVs, 48 steps of 15 min | No management | Autopilot | Optimum (knows the future) |
+| --- | ---: | ---: | ---: |
+| Cost of the day¹ | 27.77 EUR | 18.24 EUR | 17.48 EUR |
+| Grid import | 170.9 kWh | 178.7 kWh | 184.5 kWh |
+| Peak grid import | 30.0 kW | 30.0 kW | 30.0 kW |
+| Cars charged on time | 10/10 | 10/10 | 10/10 |
+| Battery cycles | 0.21 | 0.80 | 0.96 |
 
-Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/). uv can install Python 3.12. Run commands from the Git repository root (the nested OptiMesh folder).
+¹ Energy bought minus energy sold, with the battery's end-of-day charge valued at the average price. Battery wear is not included.
 
-Frontend:
+- **No management**: first come, first served at full power; the battery charges from solar surplus and discharges to cover demand.
+- **Autopilot**: re-plans the rest of the day every 15 minutes with a linear program. It sees the solar forecast and only the current step's actual solar.
+- **Optimum**: the same planner with perfect foresight, as a reference.
+
+Computed from the output: Autopilot saves 9.53 EUR (34.3 %) against no management, which is 92.6 % of the saving the optimum reaches. The test `test_office_day_reference_numbers` in `services/api/tests/test_sim.py` keeps these three costs fixed.
+
+What this does **not** show: the peak stays at the 30 kW connection limit in all three runs; Autopilot imports more energy (at cheaper times) and cycles the battery about four times as much. It is one simulated day, not a measurement of a real site.
+
+| Input | Value | Label |
+| --- | --- | --- |
+| Prices | Bulgarian day-ahead prices for 30 Sep 2026, 15-minute resolution (source cited in the code: api.energy-charts.info; not re-checked here) | measured |
+| Fees on import | 0.07 EUR/kWh on top of the day-ahead price | assumption |
+| Export price | 0.9 × day-ahead price, never below 0 | assumption |
+| Day | 07:00–19:00 Europe/Sofia, 48 steps of 15 minutes | assumption |
+| Solar | 45 kWp × 0.68 on a clear-sky curve; a cloud bank from 12:30 to 14:15 cuts actual output to 30 % of the forecast, which the forecast does not see | assumption |
+| Other load | 3 kW, 6 kW from 08:00 to 18:00, plus 3 kW HVAC from 11:00 to 17:00, ±1.5 kW variation | assumption |
+| Battery | 30 kWh, 15 kW, 95 % one-way efficiency, state of charge 10–100 %, starts at 30 % | assumption |
+| Cars | 10 EVs up to 11 kW each on 3 chargers, needing 12–35 kWh; one driver says at 12:00 they will leave at 14:30 instead of 18:00 | assumption |
+| Grid connection | 30 kW | assumption |
+| Battery wear (planning only) | 0.02 EUR/kWh | assumption |
+
+The inputs are in [scenario_office.py](services/api/app/sim/scenario_office.py) and [core.py](services/api/app/sim/core.py). The `/simulator` game is a different scenario (different day, tariff, solar and battery), so its results are not comparable with this table. The full project report in Bulgarian, with every number labelled, is [docs/REPORT.md](docs/REPORT.md).
+
+## Run it
+
+Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/); uv can install Python 3.12. The live demo also needs Docker. Run commands from the Git repository root (the nested OptiMesh folder) unless a step says otherwise.
+
+### Quick start
+
+The dashboard and the game:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open http://localhost:3000. The browser calls the API at `NEXT_PUBLIC_API_URL`, which defaults to port 8000 on the same host. The server-side status check uses `API_URL`. Copy apps/web/.env.example to apps/web/.env.local to override them. To open the dashboard from another device on the LAN, add its origin to the API's `CORS_ORIGINS`.
+Open http://localhost:3000/simulator. The game needs no backend; without one, the sidebar shows "API unreachable" and the Portfolio page cannot load sites.
 
-Backend, in another terminal:
+The browser calls the API at `NEXT_PUBLIC_API_URL`, which defaults to port 8000 on the same host. The server-side status check uses `API_URL`. Copy apps/web/.env.example to apps/web/.env.local to override them. The dashboard dev server already listens on the LAN, but the API listens only on 127.0.0.1. To open the dashboard from another device on a trusted LAN, start the API with `--host 0.0.0.0` and add the dashboard's origin (for example `http://<laptop-ip>:3000`) to the API's `CORS_ORIGINS`. Do this only on a trusted network: `/api/v1` has no authentication.
+
+The backend, in another terminal:
 
 ```sh
 cd services/api
@@ -78,162 +149,80 @@ uv sync --frozen --python 3.12
 uv run --frozen uvicorn app.main:app --reload
 ```
 
-API docs: http://127.0.0.1:8000/docs. The API starts without database credentials; readiness stays unavailable.
+API docs: http://127.0.0.1:8000/docs. The API starts without database credentials: `/health` answers, while `/ready` and the site routes answer 503 until a database is configured.
 
-## Database
-
-For an entirely local database, install Docker and run `docker compose up -d db` from the repository root. Copy services/api/.env.example to services/api/.env.
-
-For Supabase, copy the connection URI from its Connect panel. Prefer a **session pooler on port 5432** on IPv4 hosts. Change the dialect to `postgresql+psycopg://`, URL-encode the password, and enable TLS (`sslmode=require`; use `verify-full` with the downloaded CA certificate for certificate verification).
-
-Keep DATABASE_URL and optional MIGRATION_DATABASE_URL on the backend. The web app needs no database password, Supabase secret key or Supabase client package yet. Alembic owns the application schema; do not also create these tables through Prisma, Drizzle or a second migration system.
-
-From services/api:
+The scenario from [Results](#results) needs neither a database nor a network:
 
 ```sh
+cd services/api
+uv run --frozen python -m app.sim.scenario_office
+```
+
+### Live demo
+
+Each service runs in its own terminal:
+
+```sh
+# 1. Repository root: PostgreSQL and Mosquitto (returns once they are started)
+docker compose up -d db mqtt
+
+# 2. services/api: configure, migrate and seed, then the API on :8000 (keeps running)
+cd services/api
+cp .env.example .env
+uv sync --frozen --python 3.12
 uv run --frozen alembic upgrade head
-uv run --frozen alembic check
+uv run --frozen python -m app.seed
+uv run --frozen uvicorn app.main:app --reload
+
+# 3. services/api, new terminal: virtual devices (keeps running; needs the API)
+cd services/api
+uv run --frozen python -m app.simulator      # add --hour 12 for midday sun
+
+# 4. Repository root, new terminal: dashboard on :3000 (keeps running)
+npm ci
+npm run dev
 ```
 
-The `optimesh` schema must stay outside Supabase's exposed Data API schemas. Public schema access is revoked. REST JWT verification and ownership checks are implemented; broader Supabase Auth and membership/role authorization remain issue #3; the migration's privileged DB role bypasses RLS, so enabling RLS alone would not replace backend authorization.
+On Windows, keep `--reload` on the API command: without it uvicorn uses the Proactor event loop, which the MQTT client cannot run on.
 
-Compose also provides an optional API container: `docker compose --profile api up --build -d`. Apply migrations separately with `docker compose --profile tools run --rm migrate`.
+Open http://localhost:3000, pick a site and flip a switch. The command log shows `Applied` only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
-## Authenticated provisioning and history (`/sites`)
+To connect the real ESP32 through the Raspberry Pi broker over TLS, see [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md). For Supabase, the Compose API container and migration notes, see [docs/database.md](docs/database.md).
 
-The live slice under `/api/v1` does not check tokens yet (issue #3). The routes in this section do.
+Verification for this README (2026-10-03, Linux, no Docker on the machine): the quick start, the backend without a database and the scenario were run, as were all the checks below. The live demo (`docker compose`, `alembic upgrade head`, `app.seed`, `app.simulator`) was **not run** here; CI runs the migrations and the database tests against PostgreSQL 17 on every pull request.
 
-Set `SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co` in services/api/.env to the same project as the database. The backend verifies access tokens against that project's public signing keys, requiring ES256 or RS256, a valid signature, the project issuer, the `authenticated` audience and role, an unexpired token and a UUID subject. Legacy HS256 tokens are rejected. No service-role key or shared JWT signing secret is needed. Missing configuration or an unavailable signing-key provider fails closed with 503; missing or invalid credentials receive 401.
+## Repository layout
 
-Run `uv sync --frozen` and `uv run --frozen alembic upgrade head` from services/api for your development database. Revision 0002 adds the device `limits` column (with commands and extra measurement fields); revision 0003 requires `limits` to be a JSON object and extends the history indexes with the measurement ID. Existing rows receive empty limits; no device-specific bounds are invented.
-
-Send a Supabase user access token as `Authorization: Bearer <access_token>`, or use **Authorize** in http://127.0.0.1:8000/docs. The REST authorization policy is ownership: the verified token subject must match `Site.owner_id`. Memberships, role delegation and login UI remain part of issue #3.
-
-| Method | Endpoint | Behavior |
-| --- | --- | --- |
-| POST | /sites | Create a site owned by the current user |
-| POST | /sites/{site_id}/devices | Provision a device |
-| GET | /sites/{site_id}/measurements | Read bounded measurement history |
-
-Site and device reads are served by `GET /api/v1/sites` and `GET /api/v1/sites/{site_id}`, which are not authenticated yet.
-
-Create a site with `{"name":"Home","timezone":"Europe/Sofia","currency":"EUR"}`. Names are trimmed and bounded, timezones use IANA names and currency is a three-letter uppercase code. Provision a device with, for example:
-
-```json
-{
-  "name": "Demo battery",
-  "kind": "battery",
-  "source": "simulator",
-  "capabilities": ["measure_power", "battery_soc", "power_setpoint"],
-  "limits": {
-    "min_power_w": 100,
-    "max_power_w": 2000,
-    "capacity_wh": 10000
-  }
-}
+```text
+apps/web/                  Next.js dashboard and the /simulator game (game simulation in src/sim)
+services/api/              FastAPI backend, Python 3.12, uv
+  app/api.py               /api/v1 REST and WebSocket
+  app/platform.py          ingest, live snapshots, commands and acknowledgements
+  app/mqtt.py              MQTT bridge: telemetry and acks in, commands out
+  app/insights.py          forecast, costs and recommendations
+  app/registry.py          /sites provisioning and history (Supabase JWT in app/auth.py)
+  app/simulator.py         virtual MQTT devices for the demo sites
+  app/sim/                 scenario simulator and LP Autopilot, pure and deterministic
+  app/seed.py              demo sites Home, Workshop and Office
+  alembic/versions/        migrations 0001 -> 0002 -> 0003
+contracts/                 JSON Schemas and examples generated from app/schemas.py
+firmware/esp32-telemetry/  ESP32 telemetry firmware
+docs/                      device contract, project report and reference guides
+infra/mosquitto/           local broker config (anonymous, localhost only)
+scripts/                   GitHub backlog setup and config validation
 ```
 
-The limits above are example configuration values, not hardware specifications. `kind`, `capabilities` and `limits` use the device contract types in `app/schemas.py` (`DeviceKind`, `Capability`, `DeviceLimits`), so every provisioned device is readable by `/api/v1`. Bounds are optional; power bounds are finite, non-negative W, `capacity_wh` is positive, and a configured minimum must not exceed its maximum. Unknown fields, duplicate/unknown capabilities, unknown kinds and invalid sources are rejected. A device provisioned while the API is running appears in `/api/v1` snapshots after its first telemetry or an API restart.
+Reference documentation:
 
-History requires timezone-aware `start` and `end` query parameters, normalizes them to UTC and uses the half-open interval `[start, end)`. The maximum window is 30 days. `limit` defaults to 100 and accepts 1–500; `device_id` optionally narrows the query to a device belonging to the site. For example: `/sites/{site_id}/measurements?start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z&limit=100`.
+- [docs/contracts.md](docs/contracts.md): MQTT topics, payloads, units and sign conventions for devices.
+- [docs/REPORT.md](docs/REPORT.md): project report in Bulgarian, with every number labelled.
+- [docs/database.md](docs/database.md): local and Supabase PostgreSQL, migrations, Compose containers.
+- [docs/sites-api.md](docs/sites-api.md): the authenticated `/sites` routes.
+- [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md): MQTT over TLS and ingestion from the Raspberry Pi broker.
+- [docs/github-project.md](docs/github-project.md): backlog issues, labels and milestones, and CodeRabbit.
+- [docs/frontend-handoff.md](docs/frontend-handoff.md): state of the web app, game and insights work.
 
-Responses contain `items` and `next_cursor`. Follow a non-null cursor using the same site, device and time bounds; the page size may change. Ordering is ascending by `observed_at` and then `id`, so equal timestamps paginate without duplicates. Cursors are validated pagination positions, not authorization credentials or a snapshot of concurrent ingestion.
-
-An authorized empty history returns 200 with an empty page. Missing, foreign and site/device-mismatched resources return 404 to avoid exposing another user's data. Invalid input returns 422; database failures return 503 without internal details.
-
-## Raspberry Pi MQTT telemetry ingestion
-
-The aiomqtt `MqttBridge` feeds the shared `Platform` persistence/live pipeline.
-Command publishing, acknowledgements, WebSockets and the simulator remain supported.
-The Raspberry Pi path uses verified TLS and separate backend credentials.
-
-From `services/api`, run `uv sync --frozen --python 3.12` and configure the ignored
-`.env` using `.env.example`. MQTT stays disabled when `MQTT_HOST` is unset.
-TLS is enabled by default; these variables configure the real broker:
-
-| Variable | Value |
-| --- | --- |
-| `DATABASE_URL` | Existing backend PostgreSQL connection URI |
-| `MQTT_HOST` | `192.168.0.23` for the verified Raspberry Pi broker |
-| `MQTT_PORT` | `8883` (default) |
-| `MQTT_CA_FILE` | Absolute path to the trusted public CA certificate, outside Git (`MQTT_CA_CERT` is the legacy alias) |
-| `MQTT_USERNAME` | Separate backend subscriber identity |
-| `MQTT_PASSWORD` | Its password, only in local environment/configuration |
-| `MQTT_CLIENT_ID` | Stable, unique backend ID, e.g. `optimesh-backend-demo` |
-| `MQTT_TELEMETRY_TOPIC` | Optional exact `optimesh/v1/sites/{site_id}/devices/{device_id}/telemetry` |
-
-Use assigned canonical UUIDs in the topic. The currently verified topic is
-`optimesh/v1/sites/0e708814-7d96-4d44-8c6b-6e841346bd34/devices/42c485b1-f4f0-436b-ae5c-f86b7285055b/telemetry`.
-These IDs must already belong to the same device/site registry pair in the target
-database. Broker identities and ACLs authorize MQTT publications/subscriptions;
-payload UUIDs alone are not credentials. The backend identity needs read access
-to this telemetry topic and its sibling `ack` topic, plus write access to the
-`command` topic when commands are used. Never reuse the ESP32 publish identity for the subscriber.
-
-For real brokers TLS is mandatory, verifies the CA chain and hostname/IP, and requires TLS 1.2 or
-newer. The verified broker certificate includes `192.168.0.23` in its IP SAN.
-There is no insecure/plaintext fallback. No CA private key is needed. Do not
-commit passwords, local `.env` files, private keys, firmware configuration or CA
-files. Credentials and payload/error contents are omitted from application logs.
-`SUPABASE_URL` remains necessary to use the existing authenticated history API.
-
-Run one ingest-enabled API process using `uv run --frozen uvicorn app.main:app`.
-Avoid `--reload` and multiple workers for this first hardware test; two consumers
-sharing a client ID disconnect each other. `GET /status` and `/api/v1/status` return only
-`{"mqtt":"disabled"}`, `{"mqtt":"disconnected"}` or `{"mqtt":"connected"}`.
-Connected means the broker accepted the QoS 1 subscription, not that a measurement
-has already committed. `/health` and `/ready` retain their existing behavior.
-
-QoS 0 deliveries remain supported for existing devices, but cannot be replayed
-after failures; use QoS 1 for reliable hardware ingestion.
-
-The bridge dispatches telemetry and acknowledgements sequentially through `Platform`.
-Telemetry schema, canonical topic/payload IDs and registered site/device membership
-are checked before persistence. `observed_at` must be within 24 hours in the past
-and 5 minutes in the future (inclusive), compared with the current UTC clock.
-Each measurement has its own transaction, with 5s statement and 3s lock timeouts.
-The `(device_id, message_id)` unique constraint preserves the first reading on replay.
-
-aiomqtt uses Paho with manual acknowledgements, MQTT 3.1.1 and a persistent session
-for the configured stable client ID. PUBACK follows committed ingestion or duplicate
-handling; permanently invalid messages and deliveries without a configured database are consumed.
-Unexpected processing bugs are retried up to three times per topic/payload digest,
-then consumed so they cannot block later telemetry; the retry cache is bounded.
-Transient database failures remain unacknowledged and reconnect
-with exponential backoff (1–30s), without PUBACK, allowing broker replay. Both the
-telemetry and ack subscriptions must receive QoS 1 grants before status is connected.
-Broker queue retention/persistence still bounds replay; this is not an unconditional
-end-to-end delivery guarantee. Changing client ID abandons the previous session.
-An exact telemetry topic also scopes acknowledgements to that device; when unset,
-the bridge subscribes across sites under `MQTT_TOPIC_PREFIX` (default `optimesh/v1`).
-
-The anonymous local simulator broker is an explicit exception: set `MQTT_TLS=false`
-and `MQTT_PORT=1883` for a loopback host or the Compose service `mqtt`, without credentials or a CA. There is
-no automatic downgrade and other remote plaintext configuration is rejected.
-On Windows, aiomqtt requires the selector event loop. Launch one API worker with:
-
-```powershell
-python -c "import asyncio,uvicorn; asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy()); uvicorn.run('app.main:app',loop='asyncio',workers=1)"
-```
-
-Physical verification:
-
-1. Confirm migrations are applied and the exact site/device registry pair exists.
-   Configure local backend credentials/CA and keep the ESP32 publishing normally.
-2. Start the backend; poll `/status` until `connected`. With application INFO
-   logging enabled, logs show sanitized `stored` or `duplicate` outcomes. Expect a new observation around every 5s.
-3. Check PostgreSQL `optimesh.measurements` for the configured IDs and matching
-   `message_id`, `observed_at`, `power_w`, `energy_wh`, and server `received_at`.
-   Alternatively, query `/sites/{site_id}/measurements` with a valid owner bearer
-   token and timezone-aware `start`/`end` covering the current readings.
-4. Briefly stop/restart the backend using the same client ID. Confirm reconnection,
-   new rows and replay where the broker retains messages; repeated message IDs
-   must leave exactly one row. Stop with Ctrl+C and confirm the worker exits.
-
-Never publish malformed/replayed test data using the real device identity. Use an
-isolated test broker/database for destructive or failure-injection tests.
-
-## Checks
+### Checks
 
 From the root:
 
@@ -247,6 +236,7 @@ npm run build
 From services/api:
 
 ```sh
+uv sync --frozen --python 3.12
 uv run --frozen ruff check .
 uv run --frozen ruff format --check .
 uv run --frozen mypy app
@@ -259,28 +249,29 @@ PostgreSQL integration tests run only when TEST_DATABASE_URL is configured. Use 
 
 Regenerate the shared schemas from services/api with `uv run --frozen python -m app.export_contract`. CI compares them to the Pydantic contracts.
 
-## Contributing
+### Contributing
 
 Branch `feature/<slug>` from `develop`, one issue per branch, and open a PR into `develop` using the template. Never push to `main` or `develop` directly. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and the checks CI runs.
 
-## GitHub issues, labels and milestones
+## Team
 
-[.github/project-plan.json](.github/project-plan.json) defines **17 issues, 6 milestones and 13 labels** with acceptance criteria. No due dates or GitHub assignees are invented.
+From `git log` and the merged pull requests.
 
-The backlog is published as issues #2–#18. To re-synchronize labels, milestones and issues, use a user account or fine-grained token that has repository access, metadata read and Issues read/write:
+| GitHub user | Built |
+| --- | --- |
+| [Praz40](https://github.com/Praz40) | Project foundation: FastAPI and Next.js skeleton, models and migration `0001`, CI, backlog script, CodeRabbit config (#1). Site/device registry, measurement history and Supabase JWT verification for `/sites` (#20). Repository owner. |
+| [unkownshadows](https://github.com/unkownshadows) (git author `baihui11`) | Opened and merged the live vertical slice: command and ack contracts, MQTT bridge, WebSocket, commands, dashboard, seed and device simulator (#21; its four commits carry the author "Claude"). App shell and dashboard, the `/simulator` game, the Windows event-loop fix for the simulator, and the tariff, forecast, cost and recommendation modules (five commits in #28). |
+| [DGtao13](https://github.com/DGtao13) | ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). |
+| [GamingSimpwa](https://github.com/GamingSimpwa) (Stoyan) | `develop` synced with `main` and one migration chain, CLAUDE.md and CONTRIBUTING.md (#23). Scenario simulator and LP Autopilot (#24). Verified TLS for the MQTT bridge (#25). Integration of the dashboard and game branch (#28). MQTT disconnect reasons in the logs (#29). Forecast, costs and recommendations routes (#30). Project report (#31). |
 
-```sh
-python scripts/setup_github.py --repo Praz40/OptiMesh --dry-run
-gh auth login
-python scripts/setup_github.py --repo Praz40/OptiMesh
-```
+## Limitations
 
-The script accepts GH_TOKEN/GITHUB_TOKEN or uses an existing gh login. Never put a token in source or command arguments. It checks write access before mutation, paginates results and uses stable markers to avoid duplicate issues. Existing issue state/body and extra human-added labels are preserved; planned labels and milestones are synchronized.
-
-Alternatively, once the setup workflow exists on the default branch, run **Actions -> Set up GitHub project -> Run workflow**. The workflow uses its own repository-scoped issues:write token and serializes runs.
-
-CodeRabbit uses the required root filename `.coderabbit.yaml` (with a leading dot). A repository owner must install/enable the CodeRabbit GitHub app for actual PR reviews; the YAML alone does not install it. It reviews develop, release/* and main.
-
-## First demo target
-
-Hardware/simulator -> MQTT -> API -> PostgreSQL -> WebSocket -> dashboard, then one validated device command with acknowledgement. Expand to the deterministic manual/autopilot comparison once that loop works. See [contracts](docs/contracts.md) and [project manifest](.github/project-plan.json).
+- **No authentication on `/api/v1`, the WebSocket or commands** (issue #3): any client that reaches the API can read every site and send commands. Keep the API on localhost or a trusted LAN. Only the `/sites` routes verify a Supabase token.
+- The dashboard does not call `/forecast`, `/costs` or `/recommendations` yet (#12), and has no Monitor or Assist mode (#10).
+- Autopilot runs only in the two simulations; it does not control real devices. `/recommendations` proposes commands and sends nothing.
+- The scenario simulator (`app/sim`) has no API or screen. The `/simulator` game uses its own TypeScript simulation with a rule-based Autopilot.
+- The ESP32 firmware publishes telemetry for a constant simulated load only: no command subscription, acknowledgement or GPIO control (#9). The device simulator shows the return path.
+- One invented demo time-of-use tariff for every site (`app/tariff.py`), not a supplier's tariff.
+- No second third-party device adapter (#18).
+- No deployment (#15).
+- Dashboard text is still English; the team decided on Bulgarian UI text.

@@ -1,47 +1,60 @@
 import Link from "next/link";
 import type { Site } from "@/lib/api";
-import { formatPercent, formatPower } from "@/lib/energy";
+import { formatPercent, formatPower, gridDirection, powerParts, siteHealth, supplyMix } from "@/lib/energy";
 
-function gridText(watts: number | null): { label: string; value: string } {
-  if (watts === null) return { label: "Grid", value: "—" };
-  if (watts < 0) return { label: "Exporting", value: formatPower(-watts) };
-  return { label: "Importing", value: formatPower(watts) };
+const SOURCE_LABELS = { solar: "Solar", battery: "Battery", grid: "Grid" } as const;
+
+function SupplyBar({ site }: { site: Site }) {
+  const mix = supplyMix(site.summary);
+  const total = mix.reduce((sum, share) => sum + share.watts, 0);
+  if (total <= 0) return <div className="balance-bar" aria-hidden="true" />;
+  const label = mix.map((share) => `${SOURCE_LABELS[share.source]} ${formatPercent((share.watts / total) * 100)}`).join(", ");
+  return (
+    <div className="balance-bar" role="img" aria-label={`Supplied by ${label}`} title={label}>
+      {mix.map((share) => (
+        <span key={share.source} data-tone={share.source} style={{ flexGrow: share.watts }} />
+      ))}
+    </div>
+  );
 }
 
 export function SiteCard({ site }: { site: Site }) {
   const { summary } = site;
-  const offline = summary.devices_total - summary.devices_online;
-  const grid = gridText(summary.grid_w);
+  const health = siteHealth(summary);
+  const grid = gridDirection(summary.grid_w);
+  const [value, unit] = powerParts(summary.consumption_w);
   return (
     <Link className="site-card" href={`/sites/${site.id}`}>
       <div className="site-card-head">
         <h2>{site.name}</h2>
-        {offline > 0 ? (
-          <span className="chip chip-warn">
-            {offline} of {summary.devices_total} offline
-          </span>
-        ) : (
-          <span className="chip chip-ok">All {summary.devices_total} online</span>
-        )}
+        <span className="chip" data-tone={health.tone}>
+          {health.label}
+        </span>
       </div>
-      <p className="site-card-main">
-        <span className="metric-value">{formatPower(summary.consumption_w)}</span>
-        <span className="metric-label">consumption now</span>
-      </p>
+      <div className="site-card-main">
+        <p>
+          <span className="metric-value">
+            {value}
+            {unit && <span className="metric-unit">{unit}</span>}
+          </span>
+          <span className="metric-label">consumption now</span>
+        </p>
+      </div>
+      <SupplyBar site={site} />
       <dl className="site-card-stats">
-        <div>
+        <div data-tone="solar">
           <dt>Solar</dt>
           <dd>{formatPower(summary.solar_w)}</dd>
         </div>
-        <div>
-          <dt>{grid.label}</dt>
-          <dd>{grid.value}</dd>
+        <div data-tone="grid">
+          <dt>{grid === "exporting" ? "Exporting" : grid === "importing" ? "Importing" : "Grid"}</dt>
+          <dd>{formatPower(summary.grid_w === null ? null : Math.abs(summary.grid_w))}</dd>
         </div>
-        <div>
+        <div data-tone="battery">
           <dt>Battery</dt>
           <dd>{formatPercent(summary.battery_soc_pct)}</dd>
         </div>
-        <div>
+        <div data-tone="ev">
           <dt>EV</dt>
           <dd>{formatPower(summary.ev_w)}</dd>
         </div>
