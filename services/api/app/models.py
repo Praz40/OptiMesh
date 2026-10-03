@@ -37,6 +37,7 @@ class Device(Base):
     __table_args__ = (
         UniqueConstraint("id", "site_id", name="uq_devices_id_site"),
         CheckConstraint("source IN ('hardware', 'simulator')", name="valid_source"),
+        CheckConstraint("jsonb_typeof(limits) = 'object'", name="limits_object"),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     site_id: Mapped[UUID] = mapped_column(
@@ -81,8 +82,8 @@ class Measurement(Base):
             "current_a > '-Infinity'::float8 AND current_a < 'Infinity'::float8",
             name="finite_current",
         ),
-        Index("ix_measurements_device_time", "device_id", "observed_at"),
-        Index("ix_measurements_site_time", "site_id", "observed_at"),
+        Index("ix_measurements_device_time", "device_id", "observed_at", "id"),
+        Index("ix_measurements_site_time", "site_id", "observed_at", "id"),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     site_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)

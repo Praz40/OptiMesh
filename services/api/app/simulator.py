@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import random
+import ssl
 import sys
 import urllib.request
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.config import Settings
 from app.energy import Role, role_of
+from app.mqtt import tls_context
 from app.platform import InvalidRequest, validate_command
 from app.schemas import (
     AckStatus,
@@ -310,11 +312,20 @@ class Simulator:
         site.step(0.0, site.local_hour(self.hour))
         await self.publish_telemetry(client, parts.site_id, device)
 
-    async def run(self, host: str, port: int, username: str | None, password: str | None) -> None:
+    async def run(
+        self,
+        host: str,
+        port: int,
+        username: str | None,
+        password: str | None,
+        tls: ssl.SSLContext | None = None,
+    ) -> None:
         delay = 1.0
         while True:
             try:
-                async with aiomqtt.Client(host, port, username=username, password=password) as c:
+                async with aiomqtt.Client(
+                    host, port, username=username, password=password, tls_context=tls
+                ) as c:
                     for site in self.sites:
                         await c.subscribe(f"{self.prefix}/sites/{site.id}/devices/+/command", qos=1)
                     logger.info(
@@ -352,11 +363,19 @@ def main() -> None:
         raise SystemExit("No devices to simulate. Did you run `python -m app.seed`?")
     simulator = Simulator(sites, settings.mqtt_topic_prefix, args.interval, args.hour)
     password = settings.mqtt_password.get_secret_value() if settings.mqtt_password else None
+    # Same TLS settings as the API's bridge, so credentials never go out in plain text.
+    tls = tls_context(settings)
     # paho-mqtt needs add_reader/add_writer, which Windows' default Proactor loop lacks.
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     try:
         asyncio.run(
-            simulator.run(args.mqtt_host, args.mqtt_port, settings.mqtt_username, password),
+            simulator.run(
+                args.mqtt_host,
+                args.mqtt_port,
+                settings.mqtt_username.get_secret_value() if settings.mqtt_username else None,
+                password,
+                tls,
+            ),
             loop_factory=loop_factory,
         )
     except KeyboardInterrupt:

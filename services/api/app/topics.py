@@ -33,6 +33,9 @@ def parse_device_topic(prefix: str, topic: str) -> DeviceTopic | None:
     if len(parts) != 5 or parts[0] != "sites" or parts[2] != "devices":
         return None
     try:
-        return DeviceTopic(UUID(parts[1]), UUID(parts[3]), Channel(parts[4]))
+        site_id, device_id = UUID(parts[1]), UUID(parts[3])
+        if str(site_id) != parts[1] or str(device_id) != parts[3]:
+            return None
+        return DeviceTopic(site_id, device_id, Channel(parts[4]))
     except ValueError:
         return None

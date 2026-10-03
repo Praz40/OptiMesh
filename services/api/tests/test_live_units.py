@@ -216,7 +216,7 @@ class FakePlatform:
 
 def bridge() -> tuple[MqttBridge, FakePlatform]:
     fake = FakePlatform()
-    settings = Settings(_env_file=None, mqtt_host="localhost")
+    settings = Settings(_env_file=None, mqtt_host="localhost", mqtt_tls=False, mqtt_port=1883)
     return MqttBridge(settings, fake), fake  # type: ignore[arg-type]
 
 
