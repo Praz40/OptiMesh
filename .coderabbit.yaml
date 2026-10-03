@@ -12,7 +12,7 @@ reviews:
   path_filters:
     - '!package-lock.json'
     - '!services/api/uv.lock'
-    - '!contracts/telemetry-v1.schema.json'
+    - '!contracts/*.schema.json'
     - '!docs/project-brief.md'
   path_instructions:
     - path: 'services/api/**'
