@@ -55,7 +55,9 @@ def token(signing_key, **changes):
     ("method", "path"),
     [
         ("POST", "/sites"),
+        ("GET", "/sites"),
         ("POST", "/sites/" + str(uuid4()) + "/devices"),
+        ("GET", "/sites/" + str(uuid4()) + "/devices"),
         ("GET", "/sites/" + str(uuid4()) + "/measurements"),
     ],
 )
@@ -144,9 +146,13 @@ def test_jwks_outage_is_controlled(auth_client, signing_key, monkeypatch):
     assert "sensitive-host-details" not in response.text
 
 
-def test_missing_auth_configuration_fails_closed():
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("POST", "/sites"), ("GET", "/sites"), ("GET", "/sites/" + str(uuid4()) + "/devices")],
+)
+def test_missing_auth_configuration_fails_closed(method, path):
     with TestClient(create_app(Settings(_env_file=None, database_url=None))) as client:
-        response = client.post("/sites", headers={"Authorization": "Bearer ignored"})
+        response = client.request(method, path, headers={"Authorization": "Bearer ignored"})
         assert response.status_code == 503
         assert response.json() == {"detail": "Authentication unavailable"}
 

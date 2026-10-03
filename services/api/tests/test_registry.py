@@ -1,9 +1,16 @@
-from uuid import uuid4
+import os
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select
+from fastapi.testclient import TestClient
+from sqlalchemy import delete, select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
+from app.config import Settings
+from app.database import build_engine
+from app.main import create_app
 from app.models import Device, Site
 
 pytestmark = pytest.mark.integration
@@ -131,6 +138,166 @@ def test_database_outage_does_not_leak_internal_details(
     assert response.json() == {"detail": "Database unavailable"}
 
 
+def test_sites_list_only_the_callers_own_sites(
+    registry_client, registry_data, signed_headers, users
+):
+    site, other, empty = registry_data[:3]
+    mine = registry_client.get("/sites", headers=signed_headers(users[0]))
+    theirs = registry_client.get("/sites", headers=signed_headers(users[1]))
+    nobody = registry_client.get("/sites", headers=signed_headers(uuid4()))
+    assert mine.status_code == theirs.status_code == nobody.status_code == 200
+    assert sorted(item["id"] for item in mine.json()) == sorted([str(site.id), str(empty.id)])
+    assert [item["id"] for item in theirs.json()] == [str(other.id)]
+    assert nobody.json() == []
+
+
+def test_sites_are_listed_newest_first_then_by_id(registry_client, registry_db, signed_headers):
+    owner = UUID("0a000000-0000-4000-8000-000000000001")
+    first = datetime(2026, 10, 1, 8, tzinfo=UTC)
+    for n, name, hours in [(1, "Workshop", 1), (2, "Office", 2), (3, "Cabin", 0), (4, "Home", 2)]:
+        registry_db.add(
+            Site(
+                id=UUID(f"5e000000-0000-4000-8000-00000000000{n}"),
+                owner_id=owner,
+                name=name,
+                timezone="Europe/Sofia",
+                created_at=first + timedelta(hours=hours),
+            )
+        )
+    registry_db.add(Site(owner_id=uuid4(), name="Not mine", created_at=first + timedelta(hours=3)))
+    registry_db.flush()
+    response = registry_client.get("/sites", headers=signed_headers(owner))
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()] == ["Office", "Home", "Workshop", "Cabin"]
+    assert response.json()[0] == {
+        "id": "5e000000-0000-4000-8000-000000000002",
+        "owner_id": "0a000000-0000-4000-8000-000000000001",
+        "name": "Office",
+        "timezone": "Europe/Sofia",
+        "currency": "EUR",
+        "created_at": "2026-10-01T10:00:00Z",
+    }
+
+
+def test_owner_lists_the_devices_of_their_site(
+    registry_client, registry_data, signed_headers, users
+):
+    site, other, empty, device, other_device = registry_data
+    mine = registry_client.get(f"/sites/{site.id}/devices", headers=signed_headers(users[0]))
+    theirs = registry_client.get(f"/sites/{other.id}/devices", headers=signed_headers(users[1]))
+    none = registry_client.get(f"/sites/{empty.id}/devices", headers=signed_headers(users[0]))
+    assert mine.status_code == theirs.status_code == none.status_code == 200
+    assert [item["id"] for item in mine.json()] == [str(device.id)]
+    assert [item["id"] for item in theirs.json()] == [str(other_device.id)]
+    assert none.json() == []
+
+
+def test_devices_of_another_users_site_are_not_found(
+    registry_client, registry_data, signed_headers, users
+):
+    site, other = registry_data[:2]
+    for user, site_id in [(users[0], other.id), (users[1], site.id), (users[0], uuid4())]:
+        response = registry_client.get(f"/sites/{site_id}/devices", headers=signed_headers(user))
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Site not found"}
+
+
+def test_devices_are_listed_by_name_then_id(registry_client, registry_db, signed_headers):
+    owner = UUID("0a000000-0000-4000-8000-000000000001")
+    site = Site(
+        id=UUID("5e000000-0000-4000-8000-000000000001"),
+        owner_id=owner,
+        name="Home",
+        timezone="Europe/Sofia",
+        created_at=datetime(2026, 10, 1, 8, tzinfo=UTC),
+    )
+    registry_db.add(site)
+    registry_db.flush()
+    created_at = datetime(2026, 10, 1, 9, tzinfo=UTC)
+    registry_db.add_all(
+        [
+            Device(
+                id=UUID("de000000-0000-4000-8000-000000000003"),
+                site_id=site.id,
+                name="Plug",
+                kind="smart_plug",
+                source="hardware",
+                capabilities=["measure_power", "switch"],
+                limits={"max_power_w": 2000},
+                created_at=created_at,
+            ),
+            Device(
+                id=UUID("de000000-0000-4000-8000-000000000002"),
+                site_id=site.id,
+                name="Battery",
+                kind="battery",
+                source="simulator",
+                capabilities=["measure_power", "battery_soc", "power_setpoint"],
+                limits={"min_power_w": 100, "max_power_w": 2000, "capacity_wh": 10000},
+                created_at=created_at,
+            ),
+            Device(
+                id=UUID("de000000-0000-4000-8000-000000000001"),
+                site_id=site.id,
+                name="Plug",
+                kind="smart_plug",
+                source="simulator",
+                capabilities=["measure_power", "switch"],
+                created_at=created_at,
+            ),
+        ]
+    )
+    registry_db.flush()
+    response = registry_client.get(f"/sites/{site.id}/devices", headers=signed_headers(owner))
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "de000000-0000-4000-8000-000000000002",
+            "site_id": "5e000000-0000-4000-8000-000000000001",
+            "name": "Battery",
+            "kind": "battery",
+            "source": "simulator",
+            "capabilities": ["measure_power", "battery_soc", "power_setpoint"],
+            "limits": {"min_power_w": 100.0, "max_power_w": 2000.0, "capacity_wh": 10000.0},
+            "created_at": "2026-10-01T09:00:00Z",
+        },
+        {
+            "id": "de000000-0000-4000-8000-000000000001",
+            "site_id": "5e000000-0000-4000-8000-000000000001",
+            "name": "Plug",
+            "kind": "smart_plug",
+            "source": "simulator",
+            "capabilities": ["measure_power", "switch"],
+            "limits": {},
+            "created_at": "2026-10-01T09:00:00Z",
+        },
+        {
+            "id": "de000000-0000-4000-8000-000000000003",
+            "site_id": "5e000000-0000-4000-8000-000000000001",
+            "name": "Plug",
+            "kind": "smart_plug",
+            "source": "hardware",
+            "capabilities": ["measure_power", "switch"],
+            "limits": {"max_power_w": 2000.0},
+            "created_at": "2026-10-01T09:00:00Z",
+        },
+    ]
+
+
+@pytest.mark.parametrize("path", ["/sites", f"/sites/{uuid4()}/devices"])
+def test_database_outage_on_reads_does_not_leak_internal_details(
+    registry_client, registry_db, signed_headers, users, monkeypatch, path
+):
+    def unavailable(*args, **kwargs):
+        raise OperationalError("secret-statement", {}, RuntimeError("secret-host"))
+
+    monkeypatch.setattr(registry_db, "scalar", unavailable)
+    monkeypatch.setattr(registry_db, "scalars", unavailable)
+    response = registry_client.get(path, headers=signed_headers(users[0]))
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Database unavailable"}
+
+
 def test_real_request_sessions_commit_and_persist_across_requests(signed_headers, users):
     import os
     from uuid import UUID
@@ -172,3 +339,59 @@ def test_real_request_sessions_commit_and_persist_across_requests(signed_headers
             db.execute(delete(Site).where(Site.owner_id.in_(users)))
             db.commit()
         engine.dispose()
+
+
+@pytest.fixture
+def committed_client(signed_headers, users):
+    """The real app on TEST_DATABASE_URL: requests commit, so /api/v1 sees their rows."""
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    engine = build_engine(url)
+    try:
+        with TestClient(
+            create_app(
+                Settings(_env_file=None, database_url=url, supabase_url="https://auth.example.test")
+            )
+        ) as client:
+            yield client
+    finally:
+        with Session(engine) as db:
+            db.execute(delete(Site).where(Site.owner_id.in_(users)))
+            db.commit()
+        engine.dispose()
+
+
+def test_created_site_is_in_the_live_site_list_at_once(committed_client, signed_headers, users):
+    created = committed_client.post(
+        "/sites", headers=signed_headers(users[0]), json={"name": "Fresh"}
+    )
+    assert created.status_code == 201
+    listed = committed_client.get("/api/v1/sites")
+    assert listed.status_code == 200
+    assert created.json()["id"] in [site["id"] for site in listed.json()]
+
+
+def test_device_added_after_a_snapshot_is_in_the_next_snapshot(
+    committed_client, signed_headers, users
+):
+    headers = signed_headers(users[0])
+    site = committed_client.post("/sites", headers=headers, json={"name": "Fresh"})
+    assert site.status_code == 201
+    site_id = site.json()["id"]
+    before = committed_client.get(f"/api/v1/sites/{site_id}")
+    assert before.status_code == 200
+    assert before.json()["devices"] == []
+    device = committed_client.post(
+        f"/sites/{site_id}/devices",
+        headers=headers,
+        json={"name": "Meter", "kind": "grid_meter", "source": "hardware"},
+    )
+    assert device.status_code == 201
+    after = committed_client.get(f"/api/v1/sites/{site_id}")
+    assert after.status_code == 200
+    assert [item["id"] for item in after.json()["devices"]] == [device.json()["id"]]
+    assert [(item["device_id"], item["online"]) for item in after.json()["live"]] == [
+        (device.json()["id"], False)
+    ]
+    assert after.json()["site"]["summary"]["devices_total"] == 1

@@ -1,9 +1,12 @@
-"""Authenticated provisioning and history. Site and device reads are served by /api/v1."""
+"""Authenticated /sites routes: provisioning, the caller's own sites and devices, and history.
+
+Live snapshots and commands are served by /api/v1, which does not check tokens yet (issue #3).
+"""
 
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,6 +14,7 @@ from app.auth import Principal, PrincipalDep
 from app.dependencies import SessionDep
 from app.history import read_history
 from app.models import Device, Site
+from app.platform import Platform
 from app.registry_schemas import (
     DeviceCreate,
     DeviceRead,
@@ -53,6 +57,16 @@ def owned_device(session: Session, principal: Principal, site_id: UUID, device_i
     return device
 
 
+@router.get("", response_model=list[SiteRead])
+def list_own_sites(principal: PrincipalDep, session: SessionDep) -> list[SiteRead]:
+    sites = session.scalars(
+        select(Site)
+        .where(Site.owner_id == principal.user_id)
+        .order_by(Site.created_at.desc(), Site.id)
+    ).all()
+    return [SiteRead.model_validate(site) for site in sites]
+
+
 @router.post("", response_model=SiteRead, status_code=201)
 def create_site(payload: SiteCreate, principal: PrincipalDep, session: SessionDep) -> SiteRead:
     site = Site(owner_id=principal.user_id, **payload.model_dump())
@@ -70,7 +84,11 @@ def create_site(payload: SiteCreate, principal: PrincipalDep, session: SessionDe
     response_model_exclude_none=True,
 )
 def create_device(
-    site_id: UUID, payload: DeviceCreate, principal: PrincipalDep, session: SessionDep
+    site_id: UUID,
+    payload: DeviceCreate,
+    request: Request,
+    principal: PrincipalDep,
+    session: SessionDep,
 ) -> DeviceRead:
     owned_site(session, principal, site_id)
     device = Device(
@@ -85,7 +103,23 @@ def create_device(
     session.flush()
     result = DeviceRead.model_validate(device)
     session.commit()
+    # After the commit: earlier, a concurrent snapshot could cache the old list again.
+    platform: Platform = request.app.state.platform
+    platform.forget_site_devices(site_id)
     return result
+
+
+@router.get(
+    "/{site_id}/devices",
+    response_model=list[DeviceRead],
+    response_model_exclude_none=True,
+)
+def list_devices(site_id: UUID, principal: PrincipalDep, session: SessionDep) -> list[DeviceRead]:
+    owned_site(session, principal, site_id)
+    devices = session.scalars(
+        select(Device).where(Device.site_id == site_id).order_by(Device.name, Device.id)
+    ).all()
+    return [DeviceRead.model_validate(device) for device in devices]
 
 
 @router.get("/{site_id}/measurements", response_model=HistoryPage, tags=["History"])
