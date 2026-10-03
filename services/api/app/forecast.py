@@ -12,7 +12,7 @@ forecaster replaces these functions.
 
 import math
 from collections.abc import Mapping
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.schemas import DeviceKind, DeviceOut, ForecastInterval, ForecastOut, SiteOut
@@ -58,9 +58,13 @@ def build_forecast(
     current_load = site.summary.consumption_w
     intervals: list[ForecastInterval] = []
     persisted = 0
+    start_utc = start.astimezone(UTC)
     for i in range(HORIZON_HOURS):
-        # Step in UTC so DST transitions neither skip nor repeat an hour.
-        begin = (start.astimezone(ZoneInfo("UTC")) + timedelta(hours=i)).astimezone(zone)
+        # Step in UTC so DST transitions neither skip nor repeat an hour. Adding to a
+        # local time would be wall-clock arithmetic: 1 h after 03:00 summer time on the
+        # autumn change is 04:00 winter time, two real hours later.
+        begin = (start_utc + timedelta(hours=i)).astimezone(zone)
+        end = (start_utc + timedelta(hours=i + 1)).astimezone(zone)
         hour = begin.hour
         solar = capacity * sun_factor(hour + 0.5) * CLEAR_SKY_DERATE if capacity else None
         load = load_by_hour.get(hour)
@@ -69,7 +73,7 @@ def build_forecast(
         intervals.append(
             ForecastInterval(
                 start=begin,
-                end=begin + timedelta(hours=1),
+                end=end,
                 solar_w=solar,
                 load_w=load,
                 import_price=tariff.import_price(hour),
@@ -78,20 +82,25 @@ def build_forecast(
         )
 
     assumptions = [
-        f"Prices: {tariff.name} tariff in {tariff.currency}/kWh, local time ({site.timezone}).",
+        f"Цени: {tariff.name}, в {tariff.currency}/kWh по местно време ({site.timezone}).",
     ]
+    if tariff.note:
+        assumptions.append(tariff.note)
     if capacity:
+        kw = f"{capacity / 1000:g}".replace(".", ",")
         assumptions.append(
-            f"Solar: clear-sky curve for {capacity / 1000:g} kW of inverters, "
-            f"derated to {CLEAR_SKY_DERATE:.0%}. Clouds are not forecast."
+            f"Слънце: крива при ясно небе за {kw} kW инвертори, намалена до "
+            f"{CLEAR_SKY_DERATE:.0%} заради загуби. Облаците не се прогнозират."
         )
     else:
-        assumptions.append("Solar: no inverter registered, so no production is expected.")
-    history = HORIZON_HOURS - persisted - sum(1 for x in intervals if x.load_w is None)
-    assumptions.append(
-        f"Load: {history} of {HORIZON_HOURS} hours from the past week's average at that hour; "
-        f"{persisted} use the current consumption."
+        assumptions.append("Слънце: няма регистриран инвертор, затова не се очаква производство.")
+    missing = sum(1 for x in intervals if x.load_w is None)
+    history = HORIZON_HOURS - persisted - missing
+    load_note = (
+        f"Консумация: {history} от {HORIZON_HOURS} часа са средното за същия час през "
+        f"последната седмица; {persisted} са по текущата консумация"
     )
+    assumptions.append(load_note + (f"; за {missing} няма данни." if missing else "."))
     return ForecastOut(
         site_id=site.id,
         timezone=site.timezone,

@@ -7,7 +7,7 @@ of the hour. Never from a single instantaneous reading.
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from app.forecast import site_zone
@@ -26,6 +26,8 @@ class MeterHour:
     hour: datetime  # local, timezone-aware, on the hour
     min_energy_wh: float | None
     max_energy_wh: float | None
+    first_energy_wh: float | None  # counter at the hour's first reading that has one
+    last_energy_wh: float | None  # ... and at its last
     avg_import_w: float  # mean of max(power, 0)
     avg_export_w: float  # mean of max(-power, 0)
     first: datetime
@@ -36,13 +38,15 @@ def hour_energy(row: MeterHour) -> tuple[float, float]:
     """(import_wh, export_wh) for one meter-hour."""
     covered_h = min((row.last - row.first + SAMPLE_PERIOD).total_seconds(), 3600) / 3600
     by_power = row.avg_import_w * covered_h
-    counter = (
-        row.max_energy_wh - row.min_energy_wh
-        if row.min_energy_wh is not None and row.max_energy_wh is not None
-        else None
-    )
-    # A counter that went backwards was reset (device restart): fall back to power.
-    import_wh = counter if counter is not None and counter >= 0 else by_power
+    # The counter resets when the device restarts (docs/contracts.md). A counter that
+    # only rose starts at its minimum and ends at its maximum; anything else means a
+    # reset inside the hour, and max - min would count the energy before it again.
+    first, last = row.first_energy_wh, row.last_energy_wh
+    if first is not None and last is not None:
+        rose = first == row.min_energy_wh and last == row.max_energy_wh
+        import_wh = last - first if rose else by_power
+    else:
+        import_wh = by_power
     return import_wh, row.avg_export_w * covered_h
 
 
@@ -94,21 +98,30 @@ def build_costs(
             if interval.load_w is None:
                 projected = None
                 break
-            share = (interval.end - max(interval.start, now)).total_seconds() / 3600
+            # In UTC: two times in the same zone subtract as wall-clock times, which gives 0 h
+            # for the repeated hour when summer time ends.
+            begin = max(interval.start, now).astimezone(UTC)
+            share = (interval.end.astimezone(UTC) - begin).total_seconds() / 3600
             net_wh = (interval.load_w - (interval.solar_w or 0.0)) * share
             price = interval.import_price if net_wh > 0 else interval.export_price
             projected += net_wh / 1000 * price
 
     assumptions = [
-        "Energy is measured at the grid meter: import from its energy counter, export from "
-        "average power over each hour.",
-        f"Prices: {tariff.name}; export earns {tariff.export_price:.2f} {tariff.currency}/kWh.",
-        "Hours the meter did not report are missing, not estimated.",
+        "Енергията се измерва на електромера към мрежата: взетата от мрежата — по брояча му "
+        "на енергия (при липса или нулиране — по средната мощност), отдадената — по средната "
+        "мощност за всеки час.",
+        f"Цени: {tariff.name}; отдадената енергия се изкупува по "
+        f"{tariff.format_price(tariff.export_price)}.",
+        "Часовете, за които електромерът не е изпратил данни, липсват и не се оценяват.",
     ]
+    if tariff.note:
+        assumptions.append(tariff.note)
+    if not has_meter:
+        assumptions.append("Обектът няма електромер към мрежата, затова разходът не се измерва.")
     if projected is not None:
         assumptions.append(
-            "Projected day: cost so far plus the forecast net load for the rest of today, "
-            "ignoring the battery."
+            "Очакван разход за деня: разходът досега плюс прогнозното нетно потребление до "
+            "края на деня, без батерията."
         )
     return CostsOut(
         site_id=site.id,

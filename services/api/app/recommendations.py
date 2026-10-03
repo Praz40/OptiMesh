@@ -4,6 +4,8 @@ Each recommendation is one concrete command for one online device, with the
 reason and a rough saving, so the user can judge it before applying it. Rules
 only use the live snapshot, the tariff and the forecast. A recommendation is a
 proposal: nothing here sends commands.
+
+Titles and details are shown verbatim in the dashboard, so they are Bulgarian.
 """
 
 from collections.abc import Callable
@@ -81,7 +83,11 @@ def _round_w(watts: float) -> float:
 
 
 def _kw(watts: float) -> str:
-    return f"{watts / 1000:.1f} kW"
+    return f"{watts / 1000:.1f} kW".replace(".", ",")
+
+
+def _price(context: Context, price: float) -> str:
+    return context.tariff.format_price(price)
 
 
 def _clock(context: Context, moment: datetime) -> str:
@@ -139,10 +145,10 @@ def absorb_surplus_with_ev(
         PowerSetpointCommand(
             type=CommandType.POWER_SETPOINT, params=PowerSetpointParams(power_w=target)
         ),
-        f"Raise {device.name} to {_kw(target)}",
-        f"{_kw(context.export_w)} of solar is being exported at "
-        f"{context.tariff.export_price:.2f}/kWh. Charging with it instead avoids buying "
-        f"that energy back later.",
+        f"Увеличете „{device.name}“ до {_kw(target)}",
+        f"{_kw(context.export_w)} слънчева енергия се отдава към мрежата по "
+        f"{_price(context, context.tariff.export_price)}. Ако колата се зарежда с нея, "
+        "няма да се налага тази енергия да се купува обратно по-късно.",
         gain_w / 1000 * value,
     )
 
@@ -166,10 +172,10 @@ def defer_ev_charging(
         PowerSetpointCommand(
             type=CommandType.POWER_SETPOINT, params=PowerSetpointParams(power_w=minimum)
         ),
-        f"Slow {device.name} until {_clock(context, start)}",
-        f"Grid energy costs {context.price_now:.2f}/kWh now and about {later_price:.2f} from "
-        f"{_clock(context, start)}. At {_kw(minimum)} the car keeps charging; "
-        "raise it again later.",
+        f"Забавете „{device.name}“ до {_clock(context, start)}",
+        f"Енергията от мрежата струва {_price(context, context.price_now)} сега и около "
+        f"{_price(context, later_price)} от {_clock(context, start)}. При {_kw(minimum)} "
+        "колата продължава да се зарежда; увеличете мощността отново по-късно.",
         (power - minimum) / 1000 * (context.price_now - later_price),
     )
 
@@ -192,9 +198,9 @@ def pause_boiler_at_peak(
         "pause-boiler",
         device,
         SwitchCommand(type=CommandType.SWITCH, params=SwitchParams(on=False)),
-        f"Pause the {device.name.lower()} until {_clock(context, start)}",
-        f"It draws {_kw(power)} from the grid at the peak price ({context.price_now:.2f}/kWh). "
-        "Hot water stored in the tank covers a short pause.",
+        f"Изключете „{device.name}“ до {_clock(context, start)}",
+        f"Уредът взема {_kw(power)} от мрежата при пикова цена "
+        f"({_price(context, context.price_now)}). Топлата вода в бойлера стига за кратка пауза.",
         power / 1000 * (context.price_now - later_price),
     )
 
@@ -217,9 +223,9 @@ def run_load_on_surplus(
         "run-on-surplus",
         device,
         SwitchCommand(type=CommandType.SWITCH, params=SwitchParams(on=True)),
-        f"Run {device.name} now",
-        f"{_kw(context.export_w)} of solar is being exported. Running it now uses that "
-        "instead of grid energy later.",
+        f"Включете „{device.name}“ сега",
+        f"{_kw(context.export_w)} слънчева енергия се отдава към мрежата. Ако уредът работи "
+        "сега, използва нея вместо енергия от мрежата по-късно.",
         covered / 1000 * value,
     )
 
@@ -246,9 +252,10 @@ def trim_hvac_at_peak(
         PowerSetpointCommand(
             type=CommandType.POWER_SETPOINT, params=PowerSetpointParams(power_w=target)
         ),
-        f"Limit {device.name} to {_kw(target)} during the peak",
-        f"Import costs {context.price_now:.2f}/kWh until the evening peak ends. The building "
-        "holds its temperature for a while at a lower cooling limit.",
+        f"Ограничете „{device.name}“ до {_kw(target)} през пика",
+        f"Енергията от мрежата струва {_price(context, context.price_now)} до края на "
+        "вечерния пик. Сградата задържа температурата си известно време при по-ниска мощност "
+        "на климатизацията.",
         (setpoint - target) / 1000 * context.price_now,
     )
 

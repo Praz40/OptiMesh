@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, func, select, text, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import Engine, Float, func, select, text, update
+from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by, insert
 from sqlalchemy.orm import Session
 
 from app.costs import MeterHour
@@ -237,6 +237,13 @@ class Platform:
             return []
         local_hour = func.date_trunc("hour", func.timezone(timezone, Measurement.observed_at))
         power = func.coalesce(Measurement.power_w, 0.0)
+        energy_by_time = func.array_agg(
+            aggregate_order_by(Measurement.energy_wh, Measurement.observed_at), type_=ARRAY(Float)
+        ).filter(Measurement.energy_wh.is_not(None))
+        energy_backwards = func.array_agg(
+            aggregate_order_by(Measurement.energy_wh, Measurement.observed_at.desc()),
+            type_=ARRAY(Float),
+        ).filter(Measurement.energy_wh.is_not(None))
         with self._session() as session:
             rows: Any = session.execute(
                 select(
@@ -244,6 +251,8 @@ class Platform:
                     local_hour,
                     func.min(Measurement.energy_wh),
                     func.max(Measurement.energy_wh),
+                    energy_by_time[1],
+                    energy_backwards[1],
                     func.avg(func.greatest(power, 0.0)),
                     func.avg(func.greatest(-power, 0.0)),
                     func.min(Measurement.observed_at),
@@ -263,12 +272,25 @@ class Platform:
                 hour=hour.replace(tzinfo=zone),
                 min_energy_wh=min_energy,
                 max_energy_wh=max_energy,
+                first_energy_wh=first_energy,
+                last_energy_wh=last_energy,
                 avg_import_w=float(avg_import or 0.0),
                 avg_export_w=float(avg_export or 0.0),
                 first=first,
                 last=last,
             )
-            for device_id, hour, min_energy, max_energy, avg_import, avg_export, first, last in rows
+            for (
+                device_id,
+                hour,
+                min_energy,
+                max_energy,
+                first_energy,
+                last_energy,
+                avg_import,
+                avg_export,
+                first,
+                last,
+            ) in rows
         ]
 
     # --- telemetry ----------------------------------------------------------------
