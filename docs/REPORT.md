@@ -253,15 +253,27 @@ optimesh/v1/sites/{site_id}/devices/{device_id}/ack         устройство
 
 ### Действие 1: Connect (устройства → табло → команда → ack)
 
-**Команди** (от корена на репото, по README). **[не е пускано]**
+**Команди** (по README, всеки сървър в отделен терминал; README: „Five terminals (or background them)“). **[не е пускано]**
 
 ```sh
-docker compose up -d db mqtt                                      # PostgreSQL + Mosquitto
-cd services/api && cp .env.example .env && uv sync --frozen --python 3.12
-uv run --frozen alembic upgrade head && uv run --frozen python -m app.seed
-uv run --frozen uvicorn app.main:app --reload                     # API на :8000
-uv run --frozen python -m app.simulator --include-hardware        # виртуални устройства, вкл. ESP32
-npm ci && npm run dev                                             # табло на :3000 (корен на репото)
+# Терминал 1, корен на репото: база и брокер (пуска ги и връща терминала)
+docker compose up -d db mqtt
+
+# Терминал 2, API на :8000 (остава да работи)
+cd services/api
+cp .env.example .env
+uv sync --frozen --python 3.12
+uv run --frozen alembic upgrade head
+uv run --frozen python -m app.seed
+uv run --frozen uvicorn app.main:app --reload
+
+# Терминал 3, виртуални устройства, вкл. ESP32 (остава да работи)
+cd services/api
+uv run --frozen python -m app.simulator --include-hardware
+
+# Терминал 4, корен на репото: табло на :3000 (остава да работи)
+npm ci
+npm run dev
 ```
 
 - `--include-hardware` кара симулатора да играе и ролята на ESP32. С `--hour 12` слънцето е като по обед (README).
