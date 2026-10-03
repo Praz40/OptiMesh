@@ -129,6 +129,23 @@ What this does **not** show: the peak stays at the 30 kW connection limit in all
 
 The inputs are in [scenario_office.py](services/api/app/sim/scenario_office.py) and [core.py](services/api/app/sim/core.py). The `/simulator` game is a different scenario (different day, tariff, solar and battery), so its results are not comparable with this table. The full project report in Bulgarian, with every number labelled, is [docs/REPORT.md](docs/REPORT.md).
 
+## OptiMesh Game (`game/`)
+
+`game/` is the OptiMesh Game, Daniel's offline exhibition game made in Godot 4.5. You run an office day with solar, a battery, three EV chargers, cooling and an equipment wash, then see the same day under normal operation, your decisions and an OptiMesh reference strategy. It needs no backend, network or account. Read [game/README.md](game/README.md) for the gameplay and the game's own documentation.
+
+- **Play on Windows**: download the Windows x86_64 ZIP from the [v0.1.1-demo release](https://github.com/DGtao13/OptiMesh-Game/releases/tag/v0.1.1-demo) (a pre-release), extract it and run `OptiMesh.exe`.
+- **Open the source**: in standard Godot 4.5 or newer (the .NET edition is not needed), import [game/project.godot](game/project.godot) in the Project Manager and press F5.
+- **Where it comes from**: the folder was imported with its full history from [DGtao13/OptiMesh-Game](https://github.com/DGtao13/OptiMesh-Game) at `1760a07`, the commit the v0.1.1-demo release is tagged at. Later commits can be brought in with `git subtree pull --prefix=game https://github.com/DGtao13/OptiMesh-Game.git main`, never with `--squash`, so that Daniel's commits stay in the history.
+- **CI does not run the game's tests.** The GDScript suites in `game/tests` run on Windows with Godot through `game/Test-Prototype.ps1` (see [game/README.md](game/README.md)); the `frontend` and `backend` jobs do not install Godot.
+
+**Three separate simulations.** The repository now has three simulations. Each has its own scenario, model and numbers, and their results must not be compared with each other:
+
+| Simulation | Where | Scenario |
+| --- | --- | --- |
+| Scenario simulator and LP Autopilot | `services/api/app/sim` | Office day 07:00–19:00, 10 EVs on 3 chargers, Bulgarian day-ahead prices for 30 Sep 2026 (the [Results](#results) above) |
+| Browser game | `/simulator` in the dashboard (`apps/web/src/sim`) | Office day by hand with 10 cars on 3 chargers, then a rule-based Autopilot, on its own tariff, solar and battery |
+| OptiMesh Game | `game/` (Godot) | Office day 08:00–18:00 with 3 EVs, cooling, a wash and a grid-limit challenge on an illustrative tariff, scored up to 1000 points; its reference strategy is not the LP Autopilot |
+
 ## Run it
 
 Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/); uv can install Python 3.12. The live demo also needs Docker. Run commands from the Git repository root (the nested OptiMesh folder) unless a step says otherwise.
@@ -214,6 +231,7 @@ services/api/              FastAPI backend, Python 3.12, uv
   alembic/versions/        migrations 0001 -> 0002 -> 0003
 contracts/                 JSON Schemas and examples generated from app/schemas.py
 firmware/esp32-telemetry/  ESP32 telemetry firmware
+game/                      OptiMesh Game: Daniel's offline Godot 4.5 exhibition game (not run in CI)
 docs/                      device contract, project report and reference guides
 infra/mosquitto/           local broker config (anonymous, localhost only)
 scripts/                   GitHub backlog setup and config validation
@@ -266,7 +284,7 @@ Branch `feature/<slug>` from `develop`, one issue per branch, and open a PR into
 | --- | --- |
 | [Praz40](https://github.com/Praz40) (Dimitar)| Project foundation: FastAPI and Next.js skeleton, models and migration `0001`, CI, backlog script, CodeRabbit config (#1). Site/device registry, measurement history and Supabase JWT verification for `/sites` (#20). Repository owner. |
 | [unkownshadows](https://github.com/unkownshadows) (Yordan)| Opened and merged the live vertical slice: command and ack contracts, MQTT bridge, WebSocket, commands, dashboard, seed and device simulator. App shell and dashboard, the `/simulator` game, the Windows event-loop fix for the simulator, and the tariff, forecast, cost and recommendation modules (five commits in #28). |
-| [DGtao13](https://github.com/DGtao13) (Daniel)| ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). |
+| [DGtao13](https://github.com/DGtao13) (Daniel)| ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). The OptiMesh Game, the offline Godot exhibition game in `game/` (imported with its history from DGtao13/OptiMesh-Game). |
 | [GamingSimpwa](https://github.com/GamingSimpwa) (Stoyan)| `develop` synced with `main` and one migration chain, CLAUDE.md and CONTRIBUTING.md (#23). Scenario simulator and LP Autopilot (#24). Verified TLS for the MQTT bridge (#25). Integration of the dashboard and game branch (#28). MQTT disconnect reasons in the logs (#29). Forecast, costs and recommendations routes (#30). Project report (#31). |
 
 ## Limitations
@@ -274,7 +292,7 @@ Branch `feature/<slug>` from `develop`, one issue per branch, and open a PR into
 - **No authentication on `/api/v1`, the WebSocket or commands** (issue #3): any client that reaches the API can read every site and send commands. Keep the API on localhost or a trusted LAN. Only the `/sites` routes verify a Supabase token.
 - **Signing in does not hide other users' sites yet** (issue #3): „Портфолио“, the sidebar's site list and `/api/v1` still show every site to everyone, signed in or not. Only „Моите обекти“ and the `/sites` routes are per user.
 - Monitor and Assist (#10) are a dashboard setting kept in the browser: „Наблюдение“ blocks commands in the dashboard only, and the API accepts commands from any client until #3 adds authentication.
-- Autopilot runs only in the two simulations; it does not control real devices. `/recommendations` proposes commands and sends nothing.
+- Autopilot runs only in `app/sim` and the `/simulator` game (the Godot game in `game/` has its own reference strategy); it does not control real devices. `/recommendations` proposes commands and sends nothing.
 - The scenario simulator (`app/sim`) has no API or screen. The `/simulator` game uses its own TypeScript simulation with a rule-based Autopilot.
 - The ESP32 firmware publishes telemetry for a constant simulated load only: no command subscription, acknowledgement or GPIO control (#9). The device simulator shows the return path.
 - One invented demo time-of-use tariff for every site (`app/tariff.py`), not a supplier's tariff.
