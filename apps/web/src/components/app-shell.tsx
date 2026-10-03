@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { BrandMark, MenuIcon, PortfolioIcon, SiteIcon } from "@/components/icons";
+import { BrandMark, MenuIcon, PortfolioIcon, SimulatorIcon, SiteIcon } from "@/components/icons";
 import { useSites } from "@/hooks/use-sites";
 import type { Site } from "@/lib/api";
 import { formatPower, siteHealth } from "@/lib/energy";
@@ -84,6 +84,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link className="nav-link" href="/" aria-current={pathname === "/" ? "page" : undefined}>
             <PortfolioIcon />
             Portfolio
+          </Link>
+          <Link className="nav-link" href="/simulator" aria-current={pathname === "/simulator" ? "page" : undefined}>
+            <SimulatorIcon />
+            Simulator
           </Link>
         </nav>
         <nav className="nav-section" aria-labelledby="sites-heading">
