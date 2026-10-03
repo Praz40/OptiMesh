@@ -20,6 +20,7 @@ services/api/          Python 3.12, FastAPI, SQLAlchemy, Alembic, uv
   app/platform.py      transport-independent core: ingest, live snapshots, commands and acks
   app/mqtt.py          MQTT bridge: telemetry and acks in, commands out
   app/simulator.py     virtual MQTT devices for the demo sites (`python -m app.simulator`)
+  app/sim/             pure scenario simulator + optimizer (no I/O, no FastAPI imports, kW/kWh inside)
   app/seed.py          demo sites Home / Workshop / Office with fixed UUIDs
   app/auth.py          Supabase JWT verification
   app/registry.py      /sites: authenticated site/device provisioning and history
@@ -72,6 +73,10 @@ After changing a Pydantic contract run `uv run --frozen python -m app.export_con
 - Database changes go through a new Alembic revision on the single head; never edit an applied one.
 - Device rows must stay readable by the live slice: `kind`, `capabilities` and `limits` use `DeviceKind`,
   `Capability` and `DeviceLimits` from `app/schemas.py`.
+- `app/simulator.py` and `app/sim` are different things. `app/simulator.py` publishes virtual device telemetry over
+  MQTT for the live dashboard; `app/sim` replays a whole scenario day in memory for the manual/Autopilot comparison.
+- `app/sim` stays pure and deterministic. Never weaken the limits enforced in `step()`.
+  The Autopilot may read `solar_actual_kw` only for the current step. Convert kW/kWh to W/Wh at the API boundary.
 - UI text in Bulgarian (team decision). The current dashboard strings are still English.
 - No new dependency without saying why.
 

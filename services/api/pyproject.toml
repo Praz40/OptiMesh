@@ -13,6 +13,8 @@ dependencies = [
   "aiomqtt>=2.3,<3",
   "pyjwt[crypto]>=2.10,<3",
   "tzdata>=2025.2",
+  "numpy>=2,<3",
+  "scipy>=1.13,<2",
 ]
 
 [dependency-groups]
@@ -45,3 +47,7 @@ files = ["app"]
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 known-third-party = ["alembic"]
+
+[[tool.mypy.overrides]]
+module = ["scipy.*"]
+ignore_missing_imports = true
