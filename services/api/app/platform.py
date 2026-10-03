@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, select, update
+from sqlalchemy import Engine, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 # Telemetry stamped further in the future than this is rejected as a clock fault.
 MAX_CLOCK_SKEW = timedelta(minutes=5)
+MAX_PAST_AGE = timedelta(hours=24)
 
 
 class DatabaseUnavailable(Exception):
@@ -229,11 +230,15 @@ class Platform:
             .returning(Measurement.id)
         )
         with self._session() as session, session.begin():
+            session.execute(text("SET LOCAL statement_timeout = '5s'"))
+            session.execute(text("SET LOCAL lock_timeout = '3s'"))
             return session.execute(statement).first() is not None
 
     def _accept_telemetry(self, telemetry: Telemetry, received_at: datetime) -> bool:
-        if telemetry.observed_at > received_at + MAX_CLOCK_SKEW:
-            raise InvalidRequest("observed_at is in the future; check the device clock")
+        # Inclusive UTC window; subtraction also handles extreme valid timestamps safely.
+        age = received_at - telemetry.observed_at
+        if age < -MAX_CLOCK_SKEW or age > MAX_PAST_AGE:
+            raise InvalidRequest("observed_at outside freshness window; check the device clock")
         if self.find_device(telemetry.site_id, telemetry.device_id) is None:
             raise NotFound("Unknown device for this site")
         return self._store_measurement(telemetry)

@@ -58,7 +58,7 @@ Publish every **2–5 s**. More often than once per second is unnecessary. If no
 | `version` | yes | Always `1`. |
 | `site_id`, `device_id` | yes | Must match the topic, or the message is dropped. |
 | `message_id` | yes | A new random UUID v4 per message. Re-sending the same id is ignored, so retries are safe. |
-| `observed_at` | yes | UTC, ISO 8601, with `Z` or an offset. Needs NTP. Timestamps more than 5 min in the future are rejected. |
+| `observed_at` | yes | UTC, ISO 8601, with `Z` or an offset. Needs NTP. Timestamps older than 24 hours or more than 5 min in the future are rejected (inclusive bounds). |
 | `metrics.power_w` | one of power/energy/soc | Instantaneous power in **W**. The sign depends on the kind; see below. |
 | `metrics.energy_wh` | optional | Lifetime counter in **Wh**, ≥ 0, never resets while running. |
 | `metrics.soc_pct` | optional | Battery state of charge, 0–100. |
