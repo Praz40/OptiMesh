@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
-import { BatteryIcon, BuildingIcon, EvIcon, GridIcon, SolarIcon } from "@/components/icons";
+import { BatteryIcon, BuildingIcon, CoinIcon, EvIcon, GridIcon, SolarIcon } from "@/components/icons";
 import type { Device, DeviceKind, SiteSummary } from "@/lib/api";
+import { formatMoney, formatPowerBg, formatPrice } from "@/lib/format";
+import type { CostNow } from "@/lib/insights";
 import {
   batteryDirection,
   formatPercent,
@@ -46,6 +48,20 @@ export function KpiTiles({ tiles }: { tiles: Tile[] }) {
       ))}
     </dl>
   );
+}
+
+/** "Cost now": grid power × this hour's price, per hour. Negative while exporting. */
+export function costNowTile(cost: CostNow): Tile {
+  const power = `${formatPowerBg(Math.abs(cost.gridW))} × ${formatPrice(cost.price, cost.currency)}`;
+  return {
+    key: "cost-now",
+    label: "Разход в момента",
+    icon: <CoinIcon />,
+    tone: "price",
+    value: formatMoney(cost.perHour, cost.currency),
+    unit: "/ч",
+    note: cost.direction === "export" ? `приход: отдаване ${power}` : `покупка ${power}`,
+  };
 }
 
 function hasKind(devices: Device[], kind: DeviceKind) {

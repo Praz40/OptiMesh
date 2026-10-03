@@ -6,11 +6,13 @@ import { CommandLog, sortedCommands } from "@/components/command-log";
 import { DeviceList } from "@/components/device-list";
 import { EnergyFlow } from "@/components/energy-flow";
 import { Insights, liveInsights } from "@/components/insights";
-import { KpiTiles, siteTiles } from "@/components/site-kpis";
+import { costNowTile, KpiTiles, siteTiles } from "@/components/site-kpis";
 import { TimeChart, type ChartSeries } from "@/components/time-chart";
+import { usePolled } from "@/hooks/use-polled";
 import { useSiteLive } from "@/hooks/use-site-live";
-import type { Device, DeviceKind } from "@/lib/api";
+import { api, type Device, type DeviceKind } from "@/lib/api";
 import { formatClock, formatKw, formatPower, type FlowNode } from "@/lib/energy";
+import { costNow, FORECAST_POLL_MS } from "@/lib/insights";
 import { latestCommandByDevice } from "@/lib/live-state";
 import type { TrendPoint } from "@/lib/trend";
 
@@ -67,14 +69,17 @@ export function SiteDashboard() {
   const { snapshot, commands, sendCommand, trend, backfilled, siteId } = useSiteLive();
   const latest = useMemo(() => latestCommandByDevice(commands), [commands]);
   const recent = useMemo(() => sortedCommands(commands, 5), [commands]);
+  // Only for the current price of the "cost now" tile.
+  const forecast = usePolled(api.forecast, siteId, FORECAST_POLL_MS);
   if (!snapshot) return null;
 
   const { site, devices, live } = snapshot;
   const { summary } = site;
+  const cost = costNow(summary.grid_w, summary.updated_at, forecast.status === "ready" ? forecast.data : null);
 
   return (
     <>
-      <KpiTiles tiles={siteTiles(summary, devices)} />
+      <KpiTiles tiles={siteTiles(summary, devices, cost ? [costNowTile(cost)] : [])} />
 
       <div className="grid-2">
         <section className="panel" aria-labelledby="flow-title">
