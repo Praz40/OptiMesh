@@ -208,7 +208,8 @@ export function TimeChart({
         onKeyDown={onKey}
         onBlur={() => setCursor(null)}
       >
-        <title id={titleId}>{title}. Use the left and right arrow keys to read values.</title>
+        {/* One string: React renders a <title> with several children as empty. */}
+        <title id={titleId}>{`${title}. Use the left and right arrow keys to read values.`}</title>
         {shadeFrom !== undefined && shadeFrom < (x.at(-1) as number) && (
           <g>
             <rect
