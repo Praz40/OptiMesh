@@ -29,6 +29,7 @@ contracts/             JSON Schemas generated from app/schemas.py, plus examples
 docs/contracts.md      device contract for the hardware team
 infra/mosquitto/       local broker config (anonymous, localhost only)
 scripts/               GitHub backlog setup and config validation (run in CI)
+game/                  OptiMesh Game: Daniel's offline Godot 4.5 exhibition game, imported with history (not in CI)
 ```
 
 ## Routes and auth state
@@ -77,6 +78,9 @@ After changing a Pydantic contract run `uv run --frozen python -m app.export_con
   MQTT for the live dashboard; `app/sim` replays a whole scenario day in memory for the manual/Autopilot comparison.
 - `app/sim` stays pure and deterministic. Never weaken the limits enforced in `step()`.
   The Autopilot may read `solar_actual_kw` only for the current step. Convert kW/kWh to W/Wh at the API boundary.
+- `game/` is Daniel's Godot project, imported from DGtao13/OptiMesh-Game with its history. CI does not build or test
+  it. Do not change anything under `game/` as a side effect of other work; its scenario and numbers are not
+  comparable with `app/sim` or the `/simulator` game.
 - UI text in Bulgarian (team decision). The current dashboard strings are still English.
 - No new dependency without saying why.
 

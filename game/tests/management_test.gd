@@ -1,0 +1,146 @@
+extends SceneTree
+const Model=preload("res://scripts/management_simulation.gd")
+const Reference=preload("res://scripts/reference_runs.gd")
+const Store=preload("res://scripts/local_store.gd")
+var checks:=0
+var failures:=0
+func check(ok: bool,message: String) -> void:
+	checks+=1
+	if not ok:
+		failures+=1
+		push_error(message)
+func _initialize() -> void:
+	call_deferred("run")
+func run() -> void:
+	var sim=Model.new()
+	var delayed=Model.new()
+	delayed.config["ev_arrival_minute"]=510.13
+	delayed.reset()
+	check(delayed.ev_power_kw==0,"EV 01 configurable arrival suppresses pre-arrival load")
+	delayed.advance(31)
+	check(absf(delayed.ev_energy_kwh-(22.8+0.87/60*7*0.9))<1e-7,"Fractional arrival integrates only connected time")
+	check(sim.vehicles.size()==2 and sim.vehicle("ev_2").power==0,"Later EVs absent initially")
+	sim.advance(150)
+	check(sim.vehicle("ev_2").power==7 and sim.tasks.size()==3,"EV arrival and task")
+	var clear: float=Model.profile_at(Model.SOLAR_PROFILE,690)
+	sim.advance(60)
+	check(is_equal_approx(sim.solar_kw,clear*0.4),"Cloud changes real power")
+	sim.advance(45)
+	check(sim.weather_factor(sim.time_minutes)==1,"Cloud clears")
+	sim.advance(45)
+	check(sim.dirty,"Dust event")
+	var energy: float=sim.solar_generated_kwh
+	check(sim.control("solar","Clean") and not sim.control("solar","Clean"),"Paid cleaning cannot duplicate")
+	check(sim.solar_kw==0 and sim.maintenance_cost==2,"Cleaning tradeoff")
+	sim.advance(15)
+	check(sim.cleaned and not sim.dirty and sim.solar_generated_kwh==energy,"Timed cleaning recovery")
+	sim.advance(75)
+	check(sim.vehicle("ev_3").departure==960,"Unexpected deadline change allows a fair reaction window")
+	sim.advance(210)
+	check(sim.day_finished and sim.events_seen==Model.Scenario.EVENTS.size(),"All events and day end")
+	for v in sim.vehicles: check(v.departed and v.power==0,"EV departure stops charging")
+	check(sim.summary().ev_met==2,"Unreactive Normal misses revised visitor deadline")
+	var eco=Model.new()
+	eco.control("hvac","Eco")
+	eco.advance(600)
+	check(eco.inside_c>sim.inside_c and eco.comfort_percent()<80,"Comfort prevents permanent Eco exploit")
+	check(eco.summary().score<=400,"Severe comfort failure cannot earn a competent score")
+	var boost=Model.new()
+	boost.control("hvac","Boost")
+	boost.advance(600)
+	check(boost.inside_c<eco.inside_c and boost.imported_kwh>eco.imported_kwh,"Cooling/power tradeoff")
+	var wash=Model.new()
+	wash.advance(180)
+	check(wash.control("flex","Run"),"Wash window opens")
+	wash.advance(30)
+	wash.control("flex","Pause")
+	wash.advance(20)
+	check(wash.flex_minutes==30,"Wash pause retains progress")
+	wash.control("flex","Run")
+	wash.advance(30)
+	check(wash.flex_minutes==60 and wash.flex_kw==0,"Wash finishes stops demand")
+	var missed=Model.new()
+	missed.set_ev_mode("Pause")
+	missed.control("ev_2","Pause")
+	missed.control("ev_3","Pause")
+	missed.advance(600)
+	check(missed.summary().ev_met==0 and missed.summary().score<=600,"EV refusal score cap")
+	var normal=Reference.run(false)
+	var reference=Reference.run(true)
+	print("COMPARISON: Normal €%.6f / %.2f kW / %d EVs; reference €%.6f / %.2f kW / %d EVs" % [normal.cost,normal.peak,normal.ev_met,reference.cost,reference.peak,reference.ev_met])
+	check(reference.ev_met==3 and reference.flex and reference.comfort>=95 and reference.grid,"Reference meets all services")
+	check(reference.cost<normal.cost and reference.peak<normal.peak,"Coordination improves actual cost/peak")
+	check(reference==Reference.run(true),"Reference deterministic")
+	var thermal=Model.new()
+	thermal.advance(0.25)
+	check(absf(thermal.inside_c-21.9955)<1e-8,"Independent first thermal interval")
+	var overload=Model.new()
+	overload.advance(450)
+	overload.control("battery","Charge")
+	overload.control("hvac","Boost")
+	overload.control("ev_3","Fast")
+	overload.advance(45)
+	check(overload.limit_excess_minutes>0,"Real grid violation counted")
+	for duration in [3.0,6.0]:
+		var recovery=Model.new()
+		recovery.advance(450)
+		recovery.control("battery","Charge")
+		recovery.control("hvac","Boost")
+		recovery.advance(duration)
+		recovery.control("battery","Discharge")
+		recovery.control("hvac","Normal")
+		recovery.advance(45-duration)
+		check(recovery.summary().grid==(duration<5),"Grid grace accepts brief recovery and rejects sustained overload")
+	var late=Model.new()
+	late.advance(425)
+	late.control("solar","Clean")
+	late.advance(175)
+	for task in late.tasks:
+		if task.id=="solar": check(task.status=="failed","Late cleaning cannot retroactively complete task")
+	var exact=scheduled(600)
+	check(absf(exact.imported_kwh-exact.exported_kwh-(exact.served_kwh+exact.battery_charge_kwh-exact.battery_discharge_kwh-exact.solar_generated_kwh))<1e-7,"Independent full site energy balance")
+	check(absf(exact.battery_energy_kwh-(32+exact.battery_charge_kwh*0.95-exact.battery_discharge_kwh/0.95))<1e-7,"Independent battery AC/DC balance")
+	for step in [1.0,0.1,0.0166666667,3.7]:
+		var variant=scheduled(step)
+		for key in ["imported_kwh","exported_kwh","electricity_cost_eur","inside_c","comfortable_minutes","battery_energy_kwh","flex_minutes","limit_excess_minutes","solar_generated_kwh","max_grid_import_kw"]:
+			check(absf(variant.get(key)-exact.get(key))<1e-6,"Controlled schedule invariance "+key)
+		for v in variant.vehicles:
+			check(absf(v.departure_soc-exact.vehicle(v.id).departure_soc)<1e-6,"EV departure partition invariant")
+	for step in [600.0,1.0,0.1,0.0166666667]:
+		var variant=Model.new()
+		while not variant.day_finished: variant.advance(step)
+		for key in ["imported_kwh","exported_kwh","electricity_cost_eur","inside_c","comfortable_minutes","battery_energy_kwh"]:
+			check(is_finite(variant.get(key)),"Finite model field "+key)
+		# Compare untouched run to untouched baseline using independent partition.
+		var untouched=Model.new()
+		untouched.advance(600)
+		for key in ["imported_kwh","exported_kwh","electricity_cost_eur","inside_c","comfortable_minutes"]:
+			check(absf(variant.get(key)-untouched.get(key))<1e-6,"Timestep invariance "+key)
+	var storage=Store.new("user://test_board.json")
+	storage.data.entries=[]
+	check(storage.record("Test",reference,"Demo")==1,"Leaderboard inserts rank")
+	var reloaded=Store.new("user://test_board.json")
+	check(reloaded.data.entries.size()==1 and reloaded.data.entries[0].name=="Test","Leaderboard survives reload")
+	check(reloaded.data.entries[0].score==reference.score,"Score survives JSON number conversion")
+	reloaded.data.entries.append({"name":"Previous rules","score":1000.0,"cost":0.0,"mode":"Demo"})
+	check(reloaded.current_entries().size()==1,"Previous score rules preserved but excluded from current ranking")
+	reloaded.data.mute=true
+	reloaded.data.music=0.1
+	reloaded.save()
+	var preferences=Store.new("user://test_board.json")
+	check(preferences.data.mute and preferences.data.music==0.1,"Audio preferences persist")
+	for i in range(55): storage.record("Test "+str(i),normal,"Demo")
+	check(storage.data.entries.size()==50,"Leaderboard bounded")
+	DirAccess.remove_absolute("user://test_board.json")
+	sim.reset()
+	check(sim.time_minutes==480 and sim.tasks.size()==2 and not sim.dirty and sim.flex_minutes==0,"Complete reset")
+	print("MANAGEMENT MODEL: %d checks, %d failures" % [checks,failures])
+	quit(0 if failures==0 else 1)
+
+func scheduled(step: float):
+	var sim=Model.new()
+	var actions: Array=[[540,"hvac","Eco"],[630,"ev_2","Fast"],[660,"flex","Run"],[685,"flex","Pause"],[720,"flex","Run"],[780.13,"solar","Clean"],[810,"hvac","Boost"],[870,"ev_3","Fast"],[930,"battery","Discharge"],[960,"hvac","Normal"],[1080,"battery","Hold"]]
+	for action in actions:
+		while sim.time_minutes<action[0]-1e-9: sim.advance(minf(step,action[0]-sim.time_minutes))
+		sim.control(action[1],action[2])
+	return sim
