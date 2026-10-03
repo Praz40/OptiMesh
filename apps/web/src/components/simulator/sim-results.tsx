@@ -2,7 +2,8 @@
 
 import { useMemo, type Dispatch } from "react";
 import { TimeChart, type ChartSeries } from "@/components/time-chart";
-import { formatKw } from "@/lib/energy";
+import { formatKw, formatPercent } from "@/lib/energy";
+import { formatMoney, formatNumber } from "@/lib/format";
 import { run, timeAt, type SimState } from "@/sim/engine";
 import type { Game, GameAction } from "@/sim/game";
 import { averageImportPrice, metricsFor, type RunMetrics } from "@/sim/metrics";
@@ -29,46 +30,46 @@ const kwh = (wh: number) => `${(wh / 1000).toFixed(0)} kWh`;
 function rows(scenario: Scenario): Row[] {
   return [
     {
-      label: "Day cost",
-      sub: "battery-adjusted",
+      label: "Разход за деня",
+      sub: "с корекция за батерията",
       value: (m) => m.adjustedCostEur,
       format: (v) => formatEur(v),
       detail: (m) =>
-        `${formatEur(m.energyCostEur)} paid, ${m.batteryDeltaWh >= 0 ? "−" : "+"}${formatEur(Math.abs(m.adjustedCostEur - m.energyCostEur))} for ending ${Math.abs(m.batteryDeltaWh / 1000).toFixed(1)} kWh ${m.batteryDeltaWh >= 0 ? "fuller" : "emptier"}`,
+        `${formatEur(m.energyCostEur)} платени, ${m.batteryDeltaWh >= 0 ? "−" : "+"}${formatEur(Math.abs(m.adjustedCostEur - m.energyCostEur))} за ${formatNumber(Math.abs(m.batteryDeltaWh / 1000), 1)} kWh ${m.batteryDeltaWh >= 0 ? "повече" : "по-малко"} в батерията накрая`,
       better: "lower",
       servedOnly: true,
     },
-    { label: "Peak import", value: (m) => m.peakImportW, format: (v) => formatKw(v), better: "lower", servedOnly: true },
-    { label: "Grid import", value: (m) => m.importWh, format: (v) => kwh(v), better: "lower", servedOnly: true },
+    { label: "Пик от мрежата", value: (m) => m.peakImportW, format: (v) => formatKw(v), better: "lower", servedOnly: true },
+    { label: "Взета от мрежата", value: (m) => m.importWh, format: (v) => kwh(v), better: "lower", servedOnly: true },
     {
-      label: "Solar used on site",
+      label: "Слънце, ползвано на място",
       value: (m) => m.solarUtilization,
-      format: (v) => `${Math.round(v * 100)}%`,
-      detail: (m) => (m.exportWh > 0 ? `${kwh(m.exportWh)} exported` : "nothing exported"),
+      format: (v) => formatPercent(v * 100),
+      detail: (m) => (m.exportWh > 0 ? `отдадени ${kwh(m.exportWh)}` : "нищо не е отдадено"),
       better: "higher",
     },
     {
-      label: "Cars charged on time",
+      label: "Коли, заредени навреме",
       value: (m) => m.evsOnTime,
       format: (v, m) => `${v} / ${m.evsTotal}`,
-      detail: (m) => (m.unservedWh > 0 ? `${(m.unservedWh / 1000).toFixed(1)} kWh short` : "every request met"),
+      detail: (m) => (m.unservedWh > 0 ? `недостиг ${formatNumber(m.unservedWh / 1000, 1)} kWh` : "всички заявки са изпълнени"),
       better: "higher",
     },
     {
-      label: "Comfort",
-      sub: `°C·h outside ${scenario.site.hvac.comfortMinC}–${scenario.site.hvac.comfortMaxC} °C`,
+      label: "Комфорт",
+      sub: `°C·ч извън ${scenario.site.hvac.comfortMinC}–${scenario.site.hvac.comfortMaxC} °C`,
       value: (m) => m.comfortDegreeHours,
-      format: (v) => v.toFixed(1),
+      format: (v) => formatNumber(v, 1),
       better: "lower",
     },
     {
-      label: "Battery throughput",
+      label: "Енергия през батерията",
       value: (m) => m.batteryThroughputWh,
       format: (v) => kwh(v),
-      detail: (m) => `${(m.batteryThroughputWh / (2 * scenario.site.battery.capacityWh)).toFixed(2)} cycles`,
+      detail: (m) => `${formatNumber(m.batteryThroughputWh / (2 * scenario.site.battery.capacityWh), 2)} цикъла`,
       better: "lower",
     },
-    { label: "Car moves", sub: "plug-ins and swaps", value: (m) => m.plugChanges, format: (v) => `${v}`, better: "lower" },
+    { label: "Местения на коли", sub: "свързвания и размени", value: (m) => m.plugChanges, format: (v) => `${v}`, better: "lower" },
   ];
 }
 
@@ -90,11 +91,11 @@ export function SimResults({ game, dispatch }: { game: Game; dispatch: Dispatch<
     const baselineState = run(scenario, baselinePolicy);
     const list: Column[] = [];
     if (game.manualDone) {
-      list.push({ key: "you", label: "You", tone: "you", state: game.manual.state, metrics: metricsFor(scenario, game.manual.state) });
+      list.push({ key: "you", label: "Вие", tone: "you", state: game.manual.state, metrics: metricsFor(scenario, game.manual.state) });
     }
     list.push(
-      { key: "baseline", label: "Simple rules", tone: "baseline", dashed: true, state: baselineState, metrics: metricsFor(scenario, baselineState) },
-      { key: "autopilot", label: "Autopilot", tone: "autopilot", state: autopilotState, metrics: metricsFor(scenario, autopilotState) },
+      { key: "baseline", label: "Прости правила", tone: "baseline", dashed: true, state: baselineState, metrics: metricsFor(scenario, baselineState) },
+      { key: "autopilot", label: "Автопилот", tone: "autopilot", state: autopilotState, metrics: metricsFor(scenario, autopilotState) },
     );
     return list;
   }, [game.autopilot.state, game.manual.state, game.manualDone, scenario]);
@@ -114,7 +115,7 @@ export function SimResults({ game, dispatch }: { game: Game; dispatch: Dispatch<
     <div className="stack">
       <section className="panel" aria-labelledby="verdict-title">
         <div className="verdict">
-          <p className="eyebrow">Results · {scenario.name} · seed {scenario.seed}</p>
+          <p className="eyebrow">Резултати · {scenario.name} · вариант {scenario.seed}</p>
           <h2 id="verdict-title" className="verdict-headline">
             {headline}
           </h2>
@@ -122,10 +123,10 @@ export function SimResults({ game, dispatch }: { game: Game; dispatch: Dispatch<
         </div>
         <div className="table-scroll" style={{ maxHeight: "none" }}>
           <table className="data-table compare-table">
-            <caption className="sr-only">Comparison of runs on the same day</caption>
+            <caption className="sr-only">Сравнение на изпълненията в един и същ ден</caption>
             <thead>
               <tr>
-                <th scope="col">Metric</th>
+                <th scope="col">Показател</th>
                 {columns.map((c) => (
                   <th key={c.key} scope="col" className="right">
                     <span className="col-key" data-shape={c.dashed ? "dash" : undefined} style={{ ["--tone" as string]: `var(--${c.tone})` }} />
@@ -162,37 +163,37 @@ export function SimResults({ game, dispatch }: { game: Game; dispatch: Dispatch<
         </div>
         <div className="sim-actions">
           <button type="button" className="button-primary" onClick={() => dispatch({ type: "start-manual" })}>
-            {game.manualDone ? "Play this day again" : "Try it yourself"}
+            {game.manualDone ? "Изиграй деня отново" : "Изиграй деня"}
           </button>
           <button type="button" onClick={() => dispatch({ type: "start-autopilot" })}>
-            Watch Autopilot again
+            Гледай Автопилота отново
           </button>
           <button type="button" onClick={() => dispatch({ type: "new-day", seed: scenario.seed + 1 })}>
-            Another day (seed {scenario.seed + 1})
+            Друг ден (вариант {scenario.seed + 1})
           </button>
         </div>
       </section>
 
       <section className="panel" aria-labelledby="import-title">
         <div className="panel-head">
-          <h2 id="import-title">Grid import through the day</h2>
-          <span className="muted">Autopilot holds a {PEAK_CAP_W / 1000} kW peak target</span>
+          <h2 id="import-title">Взета от мрежата мощност през деня</h2>
+          <span className="muted">Автопилотът се стреми към пик до {formatKw(PEAK_CAP_W)}</span>
         </div>
-        <TimeChart title="Grid import by run" x={x} series={series} height={240} formatY={formatKw} formatX={(t) => simClock(scenario, t)} />
+        <TimeChart title="Мощност от мрежата по изпълнения" x={x} series={series} height={240} formatY={formatKw} formatX={(t) => simClock(scenario, t)} />
       </section>
 
       <div className="grid-2">
         <section className="panel" aria-labelledby="cars-result-title">
           <div className="panel-head">
-            <h2 id="cars-result-title">Each car</h2>
-            <span className="muted">kWh delivered of kWh requested</span>
+            <h2 id="cars-result-title">Всяка кола</h2>
+            <span className="muted">получени от заявени kWh</span>
           </div>
           <div className="table-scroll" style={{ maxHeight: "none" }}>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th scope="col">Driver</th>
-                  <th scope="col">Leaves</th>
+                  <th scope="col">Шофьор</th>
+                  <th scope="col">Тръгва</th>
                   {columns.map((c) => (
                     <th key={c.key} scope="col" className="right">
                       {c.label}
@@ -210,7 +211,7 @@ export function SimResults({ game, dispatch }: { game: Game; dispatch: Dispatch<
                       const ok = ev.needWh - c.state.deliveredWh[ev.id] <= 100;
                       return (
                         <td key={c.key} className="right" style={{ color: ok ? undefined : "var(--bad)" }}>
-                          {got.toFixed(1)} / {(ev.needWh / 1000).toFixed(0)}
+                          {formatNumber(got, 1)} / {(ev.needWh / 1000).toFixed(0)}
                           {ok ? "" : " ✗"}
                         </td>
                       );
@@ -224,35 +225,36 @@ export function SimResults({ game, dispatch }: { game: Game; dispatch: Dispatch<
 
         <section className="panel" aria-labelledby="fair-title">
           <div className="panel-head">
-            <h2 id="fair-title">How the comparison is kept fair</h2>
+            <h2 id="fair-title">Как сравнението остава честно</h2>
           </div>
           <ul className="fairness">
-            <li>Every run replays seed {scenario.seed}: identical weather, base load, tariff, cars and deadlines.</li>
+            <li>Всяко изпълнение повтаря вариант {scenario.seed}: същото време, базов товар, тарифа, коли и срокове.</li>
             <li>
-              Autopilot decides each quarter-hour from the day-ahead forecast and what has already happened. It does not
-              see future arrivals or the actual clouds.
+              Автопилотът решава всеки четвърт час по прогнозата „ден напред“ и по случилото се досега. Той не вижда
+              бъдещите пристигания, нито истинските облаци.
             </li>
             <li>
-              Cost is adjusted for the battery&apos;s final charge, valued at the day&apos;s average import price (€
-              {averageImportPrice(scenario).toFixed(3)}/kWh), so emptying the battery does not count as saving.
+              Разходът е коригиран за крайния заряд на батерията по средната цена за покупка за деня (
+              {formatMoney(averageImportPrice(scenario), scenario.currency, 3)}/kWh), така че изпразването на батерията не
+              се брои за спестяване.
             </li>
-            <li>Missed charging is reported as energy short, never hidden in the cost.</li>
+            <li>Пропуснатото зареждане се показва като недостиг на енергия и никога не се крие в разхода.</li>
             <li>
-              “Simple rules” is first come, first served at full power, the battery on self-use and the thermostat at
-              23 °C all day.
+              „Прости правила“ значи: първа дошла кола, първа зарежда, на пълна мощност; батерията е на
+              собствено потребление, а термостатът е на 23 °C през целия ден.
             </li>
-            <li>These are simulation results. They do not claim the same savings for any real site or hardware.</li>
+            <li>Това са резултати от симулация. Те не обещават същите спестявания за реален обект или хардуер.</li>
           </ul>
           <div className="sim-actions">
             {columns.map((c) => (
               <button key={c.key} type="button" className="button-small" onClick={() => download(scenario, c.state, c.key)}>
-                Download {c.key === "you" ? "your run" : c.label === "Autopilot" ? "Autopilot's run" : "simple rules"} as telemetry
+                Изтегли {c.key === "you" ? "вашето изпълнение" : c.key === "autopilot" ? "изпълнението на Автопилота" : "„Прости правила“"} като телеметрия
               </button>
             ))}
           </div>
           <p className="footnote">
-            JSON Lines in device contract v1, with the seeded Office device ids: the same messages the platform ingests
-            from hardware.
+            JSON Lines по договор v1 за устройствата, с идентификаторите на устройствата от демо обекта Office: същите съобщения,
+            които платформата приема от хардуера.
           </p>
         </section>
       </div>

@@ -115,7 +115,7 @@ export function TimeChart({
   shadeLabel,
   marker,
   zero = true,
-  emptyText = "No data yet",
+  emptyText = "Още няма данни",
 }: Props) {
   const [ref, width] = useElementWidth<HTMLDivElement>();
   const [cursor, setCursor] = useState<number | null>(null);
@@ -209,7 +209,7 @@ export function TimeChart({
         onBlur={() => setCursor(null)}
       >
         {/* One string: React renders a <title> with several children as empty. */}
-        <title id={titleId}>{`${title}. Use the left and right arrow keys to read values.`}</title>
+        <title id={titleId}>{`${title}. Използвайте стрелките наляво и надясно, за да прочетете стойностите.`}</title>
         {shadeFrom !== undefined && shadeFrom < (x.at(-1) as number) && (
           <g>
             <rect
@@ -302,13 +302,13 @@ export function TimeChart({
         </div>
       )}
       <details className="table-view">
-        <summary>Show as table</summary>
+        <summary>Покажи като таблица</summary>
         <div className="table-scroll">
           <table className="data-table">
             <caption className="sr-only">{title}</caption>
             <thead>
               <tr>
-                <th scope="col">Time</th>
+                <th scope="col">Час</th>
                 {series.map((s) => (
                   <th key={s.key} scope="col" className="right">
                     {s.label}

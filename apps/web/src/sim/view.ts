@@ -1,3 +1,4 @@
+import { formatMoney, formatNumber, formatSiteTime } from "@/lib/format";
 import { isDone, remainingWh, timeAt, type Controls, type SimState } from "./engine";
 import { laxityHours } from "./policies";
 import type { RunMetrics } from "./metrics";
@@ -64,45 +65,45 @@ export function formatDuration(hours: number): string {
   const minutes = Math.round(Math.abs(hours) * 60);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return `${sign}${h > 0 ? `${h} h ` : ""}${m} min`.replace(/ 0 min$/, "").trim();
+  return `${sign}${h > 0 ? `${h} ч ` : ""}${m} мин`.replace(/ 0 мин$/, "").trim();
 }
 
 export function simClock(scenario: Scenario, t: number): string {
-  return new Date(t).toLocaleTimeString("en-GB", { timeZone: scenario.timezone, hour: "2-digit", minute: "2-digit" });
+  return formatSiteTime(t, scenario.timezone);
 }
 
 export function formatEur(value: number, digits = 2): string {
-  const sign = value < 0 ? "−" : "";
-  return `${sign}€${Math.abs(value).toFixed(digits)}`;
+  return formatMoney(value, "EUR", digits);
 }
 
 /** The results headline. Deadlines come first: a run that skipped charging is not "cheaper", it did less. */
 export function verdict(you: RunMetrics | null, autopilot: RunMetrics, baseline: RunMetrics): { headline: string; detail: string } {
   const reference = you ?? baseline;
-  const who = you ? "you" : "simple rules";
-  const whose = you ? "Your" : "The simple-rules";
+  const who = you ? "вие" : "простите правила";
+  const than = you ? "вас" : "простите правила";
+  const whose = you ? "Във вашия ден" : "При простите правила";
   const peakCut = (reference.peakImportW - autopilot.peakImportW) / 1000;
-  const peak = peakCut > 0.05 ? ` Peak import ${peakCut.toFixed(1)} kW lower.` : "";
+  const peak = peakCut > 0.05 ? ` Пикът от мрежата е с ${formatNumber(peakCut, 1)} kW по-нисък.` : "";
   // Deadlines first: a run that skipped charging is not "cheaper", it did less.
   if (autopilot.evsOnTime > reference.evsOnTime) {
     return {
-      headline: `Autopilot charged ${autopilot.evsOnTime}/${autopilot.evsTotal} cars on time; ${who} managed ${reference.evsOnTime}/${reference.evsTotal}.`,
-      detail: `${whose} day left ${(reference.unservedWh / 1000).toFixed(1)} kWh of charging undone, so its cost is not comparable. Autopilot met every request for ${formatEur(autopilot.adjustedCostEur)}.${peak}`,
+      headline: `Автопилотът зареди навреме ${autopilot.evsOnTime}/${autopilot.evsTotal} коли; ${who} — ${reference.evsOnTime}/${reference.evsTotal}.`,
+      detail: `${whose} останаха незаредени ${formatNumber(reference.unservedWh / 1000, 1)} kWh, затова разходът не е сравним. Автопилотът изпълни всички заявки за ${formatEur(autopilot.adjustedCostEur)}.${peak}`,
     };
   }
   const saved = reference.adjustedCostEur - autopilot.adjustedCostEur;
   if (you && reference.evsOnTime >= autopilot.evsOnTime && saved < -0.005) {
     return {
-      headline: `You beat Autopilot by ${formatEur(-saved)}.`,
-      detail: `With ${you.evsOnTime}/${you.evsTotal} cars on time. That is the bar the scheduling work has to clear.`,
+      headline: `Победихте Автопилота с ${formatEur(-saved)}.`,
+      detail: `С ${you.evsOnTime}/${you.evsTotal} коли, заредени навреме. Това е летвата, която планирането трябва да прескочи.`,
     };
   }
   const pct = reference.adjustedCostEur > 0 ? (saved / reference.adjustedCostEur) * 100 : 0;
   return {
     headline:
       saved > 0.005
-        ? `Autopilot ran the same day ${formatEur(saved)} cheaper (${pct.toFixed(0)}%) than ${who}.`
-        : `Autopilot matched ${who} on cost.`,
-    detail: `Both charged ${autopilot.evsOnTime}/${autopilot.evsTotal} cars on time.${peak}`,
+        ? `Автопилотът изкара същия ден с ${formatEur(saved)} по-евтино (${formatNumber(pct, 0)} %) от ${than}.`
+        : `Автопилотът излезе на същия разход като ${than}.`,
+    detail: `И двете изпълнения заредиха навреме ${autopilot.evsOnTime}/${autopilot.evsTotal} коли.${peak}`,
   };
 }

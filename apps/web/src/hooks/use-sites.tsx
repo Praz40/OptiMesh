@@ -29,7 +29,7 @@ export function SitesProvider({ children }: { children: ReactNode }) {
         setState((previous) =>
           previous.status === "ready"
             ? { ...previous, stale: true }
-            : { status: "error", message: error instanceof Error ? error.message : "Request failed" },
+            : { status: "error", message: error instanceof Error ? error.message : "заявката не успя" },
         );
       }
       if (!controller.signal.aborted) timer = setTimeout(poll, POLL_MS);

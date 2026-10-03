@@ -10,7 +10,7 @@ import { formatPower, siteHealth } from "@/lib/energy";
 
 function Brand() {
   return (
-    <Link className="brand" href="/" aria-label="OptiMesh home">
+    <Link className="brand" href="/" aria-label="OptiMesh – начало">
       <BrandMark className="brand-mark" />
       <span className="brand-name">
         Opti<span>Mesh</span>
@@ -35,10 +35,10 @@ function SidebarFooter() {
   const sites = useSites();
   const text =
     sites.status === "loading"
-      ? "Connecting to OptiMesh…"
+      ? "Свързване с OptiMesh…"
       : sites.status === "error" || sites.stale
-        ? "API unreachable"
-        : "Connected to OptiMesh API";
+        ? "Няма връзка с API"
+        : "Свързано с OptiMesh API";
   const tone = sites.status === "ready" && !sites.stale ? "good" : sites.status === "loading" ? undefined : "warn";
   return (
     <div className="sidebar-foot">
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClick={() => setOpen((value) => !value)}
         >
           <MenuIcon width={20} height={20} />
-          <span className="sr-only">Menu</span>
+          <span className="sr-only">Меню</span>
         </button>
       </header>
       <aside
@@ -80,26 +80,26 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
       >
         <Brand />
-        <nav className="nav-section" aria-label="Main">
+        <nav className="nav-section" aria-label="Основна навигация">
           <Link className="nav-link" href="/" aria-current={pathname === "/" ? "page" : undefined}>
             <PortfolioIcon />
-            Portfolio
+            Портфолио
           </Link>
           <Link className="nav-link" href="/simulator" aria-current={pathname === "/simulator" ? "page" : undefined}>
             <SimulatorIcon />
-            Simulator
+            Симулатор
           </Link>
         </nav>
         <nav className="nav-section" aria-labelledby="sites-heading">
           <p className="nav-heading" id="sites-heading">
-            Sites
+            Обекти
           </p>
           {sites.status === "ready" &&
             sites.sites.map((site) => (
               <SiteLink key={site.id} site={site} active={pathname.startsWith(`/sites/${site.id}`)} />
             ))}
-          {sites.status === "loading" && <p className="muted" style={{ padding: "0 10px" }}>Loading…</p>}
-          {sites.status === "error" && <p className="muted" style={{ padding: "0 10px" }}>Unavailable</p>}
+          {sites.status === "loading" && <p className="muted" style={{ padding: "0 10px" }}>Зареждане…</p>}
+          {sites.status === "error" && <p className="muted" style={{ padding: "0 10px" }}>Недостъпно</p>}
         </nav>
         <SidebarFooter />
       </aside>

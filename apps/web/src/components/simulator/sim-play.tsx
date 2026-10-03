@@ -6,6 +6,7 @@ import { BatteryIcon, BuildingIcon, CoinIcon, EvIcon, GridIcon, SolarIcon } from
 import { KpiTiles } from "@/components/site-kpis";
 import { TimeChart } from "@/components/time-chart";
 import { formatKw, formatPercent, formatPower, powerParts, type FlowNode } from "@/lib/energy";
+import { formatMoney, formatNumber, formatPrice } from "@/lib/format";
 import { timeAt, toSiteSummary, type BatteryMode, type Controls, type SimEvent, type SimState } from "@/sim/engine";
 import { SPEEDS, type Game, type GameAction } from "@/sim/game";
 import { metricsFor } from "@/sim/metrics";
@@ -15,11 +16,11 @@ import { carViews, formatDuration, formatEur, simClock, type CarView } from "@/s
 const ALL_FLOWS = new Set<FlowNode>(["solar", "grid", "battery", "ev"]);
 
 const BATTERY_MODES: { mode: BatteryMode; label: string; hint: string }[] = [
-  { mode: "auto", label: "Self-use", hint: "Store surplus solar, cover any shortfall." },
-  { mode: "peak", label: "Shave peaks", hint: "Store surplus; discharge only when import passes 22 kW." },
-  { mode: "hold", label: "Hold", hint: "Keep the charge for later." },
-  { mode: "charge", label: "Charge", hint: "Charge at full power, from the grid if needed." },
-  { mode: "discharge", label: "Discharge", hint: "Discharge at full power; any excess is exported." },
+  { mode: "auto", label: "Собствено потребление", hint: "Съхранява излишъка от слънцето и покрива недостига." },
+  { mode: "peak", label: "Рязане на пикове", hint: "Съхранява излишъка; разрежда само когато взетото от мрежата надхвърли 22 kW." },
+  { mode: "hold", label: "Задържане", hint: "Пази заряда за по-късно." },
+  { mode: "charge", label: "Зареждане", hint: "Зарежда с пълна мощност, при нужда и от мрежата." },
+  { mode: "discharge", label: "Разреждане", hint: "Разрежда с пълна мощност; излишъкът се отдава към мрежата." },
 ];
 
 const POWER_STEPS = [0, 3700, 7400, 11_000];
@@ -37,7 +38,7 @@ function Hud({ game, dispatch, readOnly }: Props) {
       <p className="sim-clock" aria-live="off">
         {simClock(scenario, now)}
       </p>
-      <div className="sim-progress" role="progressbar" aria-valuemin={0} aria-valuemax={scenario.steps} aria-valuenow={state.step} aria-label="Day progress">
+      <div className="sim-progress" role="progressbar" aria-valuemin={0} aria-valuemax={scenario.steps} aria-valuenow={state.step} aria-label="Напредък на деня">
         <div className="sim-progress-track">
           <span style={{ width: `${progress}%` }} />
         </div>
@@ -52,16 +53,16 @@ function Hud({ game, dispatch, readOnly }: Props) {
           className={game.playing ? undefined : "button-primary"}
           onClick={() => dispatch({ type: game.playing ? "pause" : "play" })}
         >
-          {game.playing ? "Pause" : "Play"}
+          {game.playing ? "Пауза" : "Пусни"}
         </button>
       )}
       {!done && !game.playing && !readOnly && (
         <button type="button" onClick={() => dispatch({ type: "tick" })}>
-          +15 min
+          +15 мин
         </button>
       )}
       {!readOnly && !done && (
-        <div className="segmented" role="group" aria-label="Speed">
+        <div className="segmented" role="group" aria-label="Скорост">
           {SPEEDS.map((speed) => (
             <button key={speed.label} type="button" aria-pressed={game.tickMs === speed.ms} onClick={() => dispatch({ type: "speed", ms: speed.ms })}>
               {speed.label}
@@ -71,11 +72,11 @@ function Hud({ game, dispatch, readOnly }: Props) {
       )}
       {readOnly ? (
         <button type="button" className="button-ghost" onClick={() => dispatch({ type: "show-results" })}>
-          Skip to results
+          Към резултатите
         </button>
       ) : (
         <button type="button" className="button-ghost" onClick={() => dispatch({ type: "restart" })}>
-          Restart
+          Отначало
         </button>
       )}
     </div>
@@ -96,46 +97,46 @@ function SimTiles({ scenario, state }: { scenario: Scenario; state: SimState }) 
       tiles={[
         {
           key: "cost",
-          label: "Cost so far",
+          label: "Разход досега",
           icon: <CoinIcon />,
           tone: "price",
           value: formatEur(metrics.energyCostEur),
-          note: last ? `now €${last.importPrice.toFixed(2)}/kWh` : "day-ahead tariff",
+          note: last ? `сега ${formatPrice(last.importPrice, scenario.currency)}` : "цени „ден напред“",
         },
         {
           key: "peak",
-          label: "Peak import",
+          label: "Пик от мрежата",
           icon: <GridIcon />,
           tone: "grid",
           value: peak,
           unit: peakUnit,
-          note: `connection ${scenario.site.importLimitW / 1000} kW`,
+          note: `присъединяване ${formatKw(scenario.site.importLimitW)}`,
         },
         {
           key: "solar",
-          label: "Solar used on site",
+          label: "Слънце, ползвано на място",
           icon: <SolarIcon />,
           tone: "solar",
           value: metrics.solarWh > 0 ? formatPercent(metrics.solarUtilization * 100) : "—",
-          note: `${(metrics.solarWh / 1000).toFixed(0)} kWh produced`,
+          note: `произведени ${(metrics.solarWh / 1000).toFixed(0)} kWh`,
         },
         {
           key: "cars",
-          label: "Cars charged",
+          label: "Заредени коли",
           icon: <EvIcon />,
           tone: "ev",
           value: `${ready}`,
           unit: `/ ${scenario.evs.length}`,
-          note: short > 0 ? `${short} left short` : "none left short",
+          note: short > 0 ? `${short} тръгнаха недозаредени` : "няма недозаредени",
         },
         {
           key: "comfort",
-          label: "Office temperature",
+          label: "Температура в офиса",
           icon: <BuildingIcon />,
           tone: "consumption",
-          value: indoor.toFixed(1),
+          value: formatNumber(indoor, 1),
           unit: "°C",
-          note: indoor > comfortMaxC || indoor < comfortMinC ? `outside ${comfortMinC}–${comfortMaxC} °C` : "comfortable",
+          note: indoor > comfortMaxC || indoor < comfortMinC ? `извън ${comfortMinC}–${comfortMaxC} °C` : "комфортно",
         },
       ]}
     />
@@ -150,14 +151,14 @@ function BatteryControl({ controls, state, scenario, dispatch, readOnly }: { con
     <div className="control-group">
       <h3>
         <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-          <BatteryIcon level={soc} width={18} height={18} style={{ color: "var(--battery)" }} /> Battery
+          <BatteryIcon level={soc} width={18} height={18} style={{ color: "var(--battery)" }} /> Батерия
         </span>
         <span className="muted">
           {formatPercent(soc)} ·{" "}
-          {last && Math.abs(last.batteryW) >= 20 ? `${last.batteryW > 0 ? "charging" : "discharging"} ${formatPower(Math.abs(last.batteryW))}` : "idle"}
+          {last && Math.abs(last.batteryW) >= 20 ? `${last.batteryW > 0 ? "зарежда" : "разрежда"} ${formatPower(Math.abs(last.batteryW))}` : "в покой"}
         </span>
       </h3>
-      <div className="mode-grid" role="radiogroup" aria-label="Battery mode">
+      <div className="mode-grid" role="radiogroup" aria-label="Режим на батерията">
         {BATTERY_MODES.map((option) => (
           <button
             key={option.mode}
@@ -185,30 +186,30 @@ function HvacControl({ controls, state, scenario, dispatch, readOnly }: { contro
   return (
     <div className="control-group">
       <h3>
-        <span>Air conditioning</span>
+        <span>Климатизация</span>
         <span className="muted">{last ? formatPower(last.hvacW) : "—"}</span>
       </h3>
       <div className="thermostat">
-        <button type="button" aria-label="Lower thermostat" disabled={readOnly || setpoint === null || setpoint <= 19} onClick={() => set((setpoint ?? 23) - 0.5)}>
+        <button type="button" aria-label="Намали термостата" disabled={readOnly || setpoint === null || setpoint <= 19} onClick={() => set((setpoint ?? 23) - 0.5)}>
           −
         </button>
         <span className="thermostat-value" aria-live="polite">
-          {setpoint === null ? "Off" : `${setpoint.toFixed(1)} °C`}
+          {setpoint === null ? "Изключена" : `${formatNumber(setpoint, 1)} °C`}
         </span>
-        <button type="button" aria-label="Raise thermostat" disabled={readOnly || setpoint === null || setpoint >= 27} onClick={() => set((setpoint ?? 23) + 0.5)}>
+        <button type="button" aria-label="Увеличи термостата" disabled={readOnly || setpoint === null || setpoint >= 27} onClick={() => set((setpoint ?? 23) + 0.5)}>
           +
         </button>
         <button type="button" className="button-small" disabled={readOnly} onClick={() => set(setpoint === null ? 23 : null)}>
-          {setpoint === null ? "Turn on" : "Turn off"}
+          {setpoint === null ? "Включи" : "Изключи"}
         </button>
       </div>
       <p className="temp-readout">
         <span>
-          Inside <strong data-tone={outside ? "warn" : undefined}>{state.indoorC.toFixed(1)} °C</strong>
+          Вътре <strong data-tone={outside ? "warn" : undefined}>{formatNumber(state.indoorC, 1)} °C</strong>
         </span>
-        <span>Outside {last ? `${last.outdoorC.toFixed(0)} °C` : "—"}</span>
+        <span>Навън {last ? `${last.outdoorC.toFixed(0)} °C` : "—"}</span>
         <span>
-          Comfort {comfortMinC}–{comfortMaxC} °C, 08:00–18:00
+          Комфорт {comfortMinC}–{comfortMaxC} °C, 08:00–18:00
         </span>
       </p>
     </div>
@@ -221,7 +222,7 @@ function Chargers({ scenario, controls, state, views, dispatch, readOnly }: { sc
     <div className="control-group">
       <h3>
         <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-          <EvIcon width={18} height={18} style={{ color: "var(--ev)" }} /> Chargers
+          <EvIcon width={18} height={18} style={{ color: "var(--ev)" }} /> Зарядни
         </span>
         <span className="muted">{last ? formatPower(last.evW) : "—"}</span>
       </h3>
@@ -235,18 +236,18 @@ function Chargers({ scenario, controls, state, views, dispatch, readOnly }: { sc
                 <p className="charger-name">
                   {charger.name}
                   <span className="muted">
-                    {powerW > 0 ? formatPower(powerW) : car?.status === "ready" ? "car charged, unplug to free" : car ? "idle" : "free"}
+                    {powerW > 0 ? formatPower(powerW) : car?.status === "ready" ? "колата е заредена, откачете я" : car ? "в покой" : "свободна"}
                   </span>
                 </p>
                 <p className="charger-car">
                   {car
-                    ? `${car.ev.driver} · ${(car.deliveredWh / 1000).toFixed(1)} of ${(car.ev.needWh / 1000).toFixed(0)} kWh`
-                    : "No car plugged in"}
+                    ? `${car.ev.driver} · ${formatNumber(car.deliveredWh / 1000, 1)} от ${(car.ev.needWh / 1000).toFixed(0)} kWh`
+                    : "Няма свързана кола"}
                 </p>
               </div>
               <div className="charger-tools">
                 <label>
-                  <span className="sr-only">{charger.name} power limit</span>
+                  <span className="sr-only">Лимит на мощността на {charger.name}</span>
                   <select
                     value={controls.chargerW[charger.id]}
                     disabled={readOnly}
@@ -254,7 +255,7 @@ function Chargers({ scenario, controls, state, views, dispatch, readOnly }: { sc
                   >
                     {POWER_STEPS.map((watts) => (
                       <option key={watts} value={watts}>
-                        {watts === 0 ? "Paused" : formatKw(watts)}
+                        {watts === 0 ? "Пауза" : formatKw(watts)}
                       </option>
                     ))}
                     {!POWER_STEPS.includes(controls.chargerW[charger.id]) && (
@@ -264,7 +265,7 @@ function Chargers({ scenario, controls, state, views, dispatch, readOnly }: { sc
                 </label>
                 {car && !readOnly && (
                   <button type="button" className="button-small" onClick={() => dispatch({ type: "unplug", chargerId: charger.id })}>
-                    Unplug
+                    Откачи
                   </button>
                 )}
               </div>
@@ -282,13 +283,13 @@ function Chargers({ scenario, controls, state, views, dispatch, readOnly }: { sc
 }
 
 const STATUS_TEXT: Record<CarView["status"], string> = {
-  upcoming: "Not here yet",
-  waiting: "Waiting for a charger",
-  charging: "Charging",
-  plugged: "Plugged in, not charging",
-  ready: "Charged",
-  "left-ok": "Left charged",
-  "left-short": "Left short",
+  upcoming: "Още не е тук",
+  waiting: "Чака зарядна",
+  charging: "Зарежда",
+  plugged: "Свързана, не зарежда",
+  ready: "Заредена",
+  "left-ok": "Тръгна заредена",
+  "left-short": "Тръгна недозаредена",
 };
 
 const STATUS_TONE: Partial<Record<CarView["status"], "good" | "warn" | "bad" | "accent">> = {
@@ -323,21 +324,21 @@ function CarCard({ view, scenario, controls, dispatch, readOnly }: { view: CarVi
       </div>
       <p className="car-meta">
         <span>
-          {(view.deliveredWh / 1000).toFixed(1)} / {(ev.needWh / 1000).toFixed(0)} kWh
+          {formatNumber(view.deliveredWh / 1000, 1)} / {(ev.needWh / 1000).toFixed(0)} kWh
         </span>
         <span>
-          {view.status === "upcoming" ? `arrives ${simClock(scenario, ev.arrival)}` : `leaves ${simClock(scenario, ev.departure)}`}
+          {view.status === "upcoming" ? `пристига ${simClock(scenario, ev.arrival)}` : `тръгва ${simClock(scenario, ev.departure)}`}
         </span>
       </p>
       {view.slackH !== null && (
         <p className="car-meta" style={{ color: view.atRisk ? "var(--warn)" : undefined }}>
-          <span>{view.slackH < 0 ? `Will be ${formatDuration(-view.slackH)} short at full power` : `${formatDuration(view.slackH)} of slack at full power`}</span>
+          <span>{view.slackH < 0 ? `Не стигат ${formatDuration(-view.slackH)} дори на пълна мощност` : `Резерв ${formatDuration(view.slackH)} при пълна мощност`}</span>
         </p>
       )}
       {view.status === "ready" && view.chargerId && !readOnly && (
         <div className="car-actions">
           <button type="button" className="button-small" onClick={() => dispatch({ type: "unplug", chargerId: view.chargerId as string })}>
-            Unplug to free {scenario.chargers.find((c) => c.id === view.chargerId)?.name}
+            Откачи и освободи {scenario.chargers.find((c) => c.id === view.chargerId)?.name}
           </button>
         </div>
       )}
@@ -345,11 +346,11 @@ function CarCard({ view, scenario, controls, dispatch, readOnly }: { view: CarVi
         <div className="car-actions">
           {freeCharger && !view.chargerId ? (
             <button type="button" className="button-small button-primary" onClick={() => dispatch({ type: "plug", evId: ev.id, chargerId: freeCharger })}>
-              Plug in
+              Свържи
             </button>
           ) : null}
           <label>
-            <span className="sr-only">Move {ev.driver}&apos;s car to a charger</span>
+            <span className="sr-only">Премести колата на {ev.driver} на зарядна</span>
             <select
               value={view.chargerId ?? ""}
               onChange={(event) => {
@@ -358,13 +359,13 @@ function CarCard({ view, scenario, controls, dispatch, readOnly }: { view: CarVi
                 else if (view.chargerId) dispatch({ type: "unplug", chargerId: view.chargerId });
               }}
             >
-              <option value="">{view.chargerId ? "Unplug" : freeCharger ? "Choose charger…" : "Swap in for…"}</option>
+              <option value="">{view.chargerId ? "Откачи" : freeCharger ? "Избери зарядна…" : "Смени с…"}</option>
               {scenario.chargers.map((charger) => {
                 const occupant = scenario.evs.find((other) => other.id === controls.plugs[charger.id]);
                 return (
                   <option key={charger.id} value={charger.id}>
                     {charger.name}
-                    {occupant && occupant.id !== ev.id ? ` (swap out ${occupant.driver})` : occupant ? " (current)" : " (free)"}
+                    {occupant && occupant.id !== ev.id ? ` (вместо ${occupant.driver})` : occupant ? " (текуща)" : " (свободна)"}
                   </option>
                 );
               })}
@@ -384,32 +385,32 @@ function DayCharts({ scenario, state }: { scenario: Scenario; state: SimState })
   return (
     <div className="stack">
       <TimeChart
-        title="Site power through the day"
+        title="Мощност на обекта през деня"
         x={x}
         series={[
-          { key: "solar", label: "Solar", tone: "solar", style: "area", values: pick((r) => r.solarW) },
-          { key: "consumption", label: "Consumption", tone: "consumption", values: pick((r) => r.baseW + r.hvacW + r.evW) },
-          { key: "grid", label: "Grid (+ import)", tone: "grid", values: pick((r) => r.gridW) },
+          { key: "solar", label: "Слънце", tone: "solar", style: "area", values: pick((r) => r.solarW) },
+          { key: "consumption", label: "Консумация", tone: "consumption", values: pick((r) => r.baseW + r.hvacW + r.evW) },
+          { key: "grid", label: "Мрежа (+ взета)", tone: "grid", values: pick((r) => r.gridW) },
         ]}
         height={230}
         formatY={formatKw}
         formatX={clock}
-        marker={state.step > 0 && state.step < scenario.steps ? { x: now, label: "now" } : undefined}
-        emptyText="The chart fills in as the day runs."
+        marker={state.step > 0 && state.step < scenario.steps ? { x: now, label: "сега" } : undefined}
+        emptyText="Графиката се попълва, докато денят тече."
       />
       <div>
         <h3 className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>
-          Import price, day-ahead (€/kWh)
+          Цена за покупка, „ден напред“ (€/kWh)
         </h3>
         <TimeChart
-          title="Import price through the day"
+          title="Цена за покупка през деня"
           x={x}
-          series={[{ key: "price", label: "Import price", tone: "price", values: scenario.series.importPrice }]}
+          series={[{ key: "price", label: "Цена за покупка", tone: "price", values: scenario.series.importPrice }]}
           height={120}
           curve="step"
-          formatY={(v) => `€${v.toFixed(2)}`}
+          formatY={(v) => formatMoney(v, scenario.currency)}
           formatX={clock}
-          marker={state.step < scenario.steps ? { x: now, label: "now" } : undefined}
+          marker={state.step < scenario.steps ? { x: now, label: "сега" } : undefined}
         />
       </div>
     </div>
@@ -418,7 +419,7 @@ function DayCharts({ scenario, state }: { scenario: Scenario; state: SimState })
 
 function EventLog({ scenario, events }: { scenario: Scenario; events: SimEvent[] }) {
   const recent = [...events].reverse().slice(0, 30);
-  if (recent.length === 0) return <p className="muted">Nothing has happened yet.</p>;
+  if (recent.length === 0) return <p className="muted">Още нищо не се е случило.</p>;
   return (
     <ol className="events">
       {recent.map((event, i) => (
@@ -444,22 +445,22 @@ export function SimPlay({ game, dispatch, readOnly }: Props) {
       <Hud game={game} dispatch={dispatch} readOnly={readOnly} />
       {readOnly && (
         <p className="sim-banner">
-          <strong>Autopilot</strong> is running the same day: same weather, prices and cars. It sees only the day-ahead
-          forecast and what has happened so far.
+          <strong>Автопилотът</strong> управлява същия ден: същото време, цени и коли. Вижда само прогнозата „ден
+          напред“ и случилото се досега.
         </p>
       )}
       <SimTiles scenario={scenario} state={state} />
       <div className="sim-layout">
         <section className="panel" aria-labelledby="sim-cars-title">
           <div className="panel-head">
-            <h2 id="sim-cars-title">Car park</h2>
-            <span className="muted">Slack: how long a car can wait and still finish at full power</span>
+            <h2 id="sim-cars-title">Паркинг</h2>
+            <span className="muted">Резерв: колко може да чака колата и пак да се зареди на пълна мощност</span>
           </div>
           <Chargers scenario={scenario} controls={controls} state={state} views={views} dispatch={dispatch} readOnly={readOnly} />
           <div className="control-group">
             <h3>
-              <span>Cars</span>
-              <span className="muted">{readOnly ? "Autopilot plans each car into the cheapest quarter-hours" : "Plugging applies from the next quarter-hour"}</span>
+              <span>Коли</span>
+              <span className="muted">{readOnly ? "Автопилотът разпределя всяка кола в най-евтините интервали от 15 минути" : "Свързването важи от следващия четвърт час"}</span>
             </h3>
             <ul className="cars" style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {views.map((view) => (
@@ -471,14 +472,14 @@ export function SimPlay({ game, dispatch, readOnly }: Props) {
         <div className="stack">
           <section className="panel" aria-labelledby="sim-flow-title">
             <div className="panel-head">
-              <h2 id="sim-flow-title">Energy flow</h2>
-              <span className="muted">15-minute average</span>
+              <h2 id="sim-flow-title">Поток на енергията</h2>
+              <span className="muted">средно за 15 минути</span>
             </div>
             <EnergyFlow summary={summary} present={ALL_FLOWS} />
           </section>
           <section className="panel" aria-labelledby="sim-controls-title">
             <div className="panel-head">
-              <h2 id="sim-controls-title">{readOnly ? "Autopilot's settings" : "Building"}</h2>
+              <h2 id="sim-controls-title">{readOnly ? "Настройки на Автопилота" : "Сграда"}</h2>
             </div>
             <BatteryControl controls={controls} state={state} scenario={scenario} dispatch={dispatch} readOnly={readOnly} />
             <HvacControl controls={controls} state={state} scenario={scenario} dispatch={dispatch} readOnly={readOnly} />
@@ -486,13 +487,13 @@ export function SimPlay({ game, dispatch, readOnly }: Props) {
         </div>
         <section className="panel" aria-labelledby="sim-chart-title">
           <div className="panel-head">
-            <h2 id="sim-chart-title">The day so far</h2>
+            <h2 id="sim-chart-title">Денят досега</h2>
           </div>
           <DayCharts scenario={scenario} state={state} />
         </section>
         <section className="panel" aria-labelledby="sim-events-title">
           <div className="panel-head">
-            <h2 id="sim-events-title">What happened</h2>
+            <h2 id="sim-events-title">Какво се случи</h2>
           </div>
           <EventLog scenario={scenario} events={state.events} />
         </section>

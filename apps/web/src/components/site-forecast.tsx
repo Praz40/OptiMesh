@@ -84,7 +84,7 @@ export function ForecastView({ state }: { state: PollState<Forecast> }) {
         <span>
           <strong>Прогноза, не измерване.</strong> Очаквания за следващите часове, изчислени в{" "}
           {formatSiteTime(forecast.generated_at, forecast.timezone)} ({forecast.timezone}). Измерените стойности са
-          в „Overview“.
+          в „Преглед“.
         </span>
       </p>
       <ForecastPanels forecast={forecast} />

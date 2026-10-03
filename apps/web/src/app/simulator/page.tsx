@@ -3,8 +3,8 @@ import { SimulatorGame } from "@/components/simulator/simulator-game";
 import "./simulator.css";
 
 export const metadata: Metadata = {
-  title: "Simulator",
-  description: "Run a day of the office by hand, then compare it with Autopilot on the same scenario.",
+  title: "Симулатор",
+  description: "Управлявайте ръчно един ден в офиса, после го сравнете с Автопилота в същия сценарий.",
 };
 
 export default function SimulatorPage() {

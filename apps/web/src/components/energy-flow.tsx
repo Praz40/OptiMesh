@@ -15,11 +15,11 @@ const NODE_RADIUS = 34;
 const HUB_RADIUS = 9;
 
 const NODES: Record<FlowNode, NodeSpec> = {
-  solar: { x: 320, y: 52, label: "Solar", color: "var(--solar)", labelAt: "right" },
-  grid: { x: 88, y: 196, label: "Grid", color: "var(--grid)", labelAt: "below" },
-  home: { x: 552, y: 196, label: "Site loads", color: "var(--consumption)", labelAt: "below" },
-  battery: { x: 196, y: 330, label: "Battery", color: "var(--battery)", labelAt: "below" },
-  ev: { x: 444, y: 330, label: "EV charging", color: "var(--ev)", labelAt: "below" },
+  solar: { x: 320, y: 52, label: "Слънце", color: "var(--solar)", labelAt: "right" },
+  grid: { x: 88, y: 196, label: "Мрежа", color: "var(--grid)", labelAt: "below" },
+  home: { x: 552, y: 196, label: "Товари", color: "var(--consumption)", labelAt: "below" },
+  battery: { x: 196, y: 330, label: "Батерия", color: "var(--battery)", labelAt: "below" },
+  ev: { x: 444, y: 330, label: "Коли", color: "var(--ev)", labelAt: "below" },
 };
 
 function Icon({ node, soc }: { node: FlowNode; soc: number | null }) {
@@ -36,12 +36,12 @@ function Icon({ node, soc }: { node: FlowNode; soc: number | null }) {
 }
 
 function caption(node: FlowNode, flow: Flow): string {
-  if (flow.watts === null) return "No data";
-  if (node === "grid") return flow.direction === "in" ? "Importing" : flow.direction === "out" ? "Exporting" : "Balanced";
-  if (node === "battery") return flow.direction === "in" ? "Discharging" : flow.direction === "out" ? "Charging" : "Idle";
-  if (node === "solar") return flow.direction === "idle" ? "Not producing" : "Producing";
-  if (node === "ev") return flow.direction === "idle" ? "Not charging" : "Charging";
-  return "Consuming";
+  if (flow.watts === null) return "Няма данни";
+  if (node === "grid") return flow.direction === "in" ? "Подава" : flow.direction === "out" ? "Приема" : "В баланс";
+  if (node === "battery") return flow.direction === "in" ? "Разрежда" : flow.direction === "out" ? "Зарежда" : "В покой";
+  if (node === "solar") return flow.direction === "idle" ? "Не произвежда" : "Произвежда";
+  if (node === "ev") return flow.direction === "idle" ? "Не зареждат" : "Зареждат";
+  return "Консумират";
 }
 
 /** Seconds per dot period: faster for more power, on a log scale so small loads stay visible. */
@@ -113,11 +113,11 @@ export function EnergyFlow({ summary, present }: { summary: SiteSummary; present
   );
   const maxWatts = Math.max(1000, ...order.map((node) => flows[node].watts ?? 0));
   const description = order
-    .map((node) => `${NODES[node].label}: ${formatPower(flows[node].watts)} ${caption(node, flows[node]).toLowerCase()}`)
+    .map((node) => `${NODES[node].label}: ${caption(node, flows[node]).toLowerCase()} ${formatPower(flows[node].watts)}`)
     .join("; ");
 
   return (
-    <svg className="energy-flow" viewBox="0 0 640 420" role="img" aria-label={`Energy flow. ${description}`}>
+    <svg className="energy-flow" viewBox="0 0 640 420" role="img" aria-label={`Поток на енергията. ${description}`}>
       {order.map((node) => (
         <Branch key={node} node={node} flow={flows[node]} maxWatts={maxWatts} />
       ))}

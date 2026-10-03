@@ -6,7 +6,7 @@ import { SiteCard } from "@/components/site-card";
 import { KpiTiles } from "@/components/site-kpis";
 import { useSites } from "@/hooks/use-sites";
 import type { Site } from "@/lib/api";
-import { gridDirection, powerParts } from "@/lib/energy";
+import { GRID_LABELS, gridDirection, powerParts } from "@/lib/energy";
 
 function total(sites: Site[], pick: (site: Site) => number | null): number | null {
   const values = sites.map(pick).filter((value): value is number => value !== null);
@@ -24,7 +24,7 @@ export function Portfolio() {
   if (state.status === "loading") {
     return (
       <p className="muted" aria-busy="true">
-        Loading sites…
+        Зареждане на обектите…
       </p>
     );
   }
@@ -32,7 +32,7 @@ export function Portfolio() {
     return (
       <>
         <p className="notice" role="alert">
-          Could not load sites ({state.message}). Check that the API is running and seeded.
+          Обектите не се заредиха ({state.message}). Проверете дали API работи и има демо данни.
         </p>
         <ConnectionStatus />
       </>
@@ -48,50 +48,50 @@ export function Portfolio() {
     <>
       {stale && (
         <p className="notice" role="status">
-          Connection lost. Showing the last known values.
+          Връзката прекъсна. Показани са последните известни стойности.
         </p>
       )}
       <KpiTiles
         tiles={[
           {
             key: "consumption",
-            label: "Total consumption",
+            label: "Обща консумация",
             icon: <BuildingIcon />,
             tone: "consumption",
             ...power(total(sites, (s) => s.summary.consumption_w)),
-            note: `across ${sites.length} site${sites.length === 1 ? "" : "s"}`,
+            note: `в ${sites.length} ${sites.length === 1 ? "обект" : "обекта"}`,
           },
           {
             key: "solar",
-            label: "Solar production",
+            label: "Слънчево производство",
             icon: <SolarIcon />,
             tone: "solar",
             ...power(total(sites, (s) => s.summary.solar_w)),
-            note: "right now",
+            note: "в момента",
           },
           {
             key: "grid",
-            label: "Net grid",
+            label: "Мрежа (нетно)",
             icon: <GridIcon />,
             tone: "grid",
             ...power(grid === null ? null : Math.abs(grid)),
-            note: direction ?? "no meters",
+            note: direction ? GRID_LABELS[direction] : "няма електромери",
           },
           {
             key: "sites",
-            label: "Sites reporting",
+            label: "Обекти с данни",
             icon: <SiteIcon />,
             tone: "battery",
             value: `${online}`,
             unit: `/ ${sites.length}`,
-            note: online === sites.length ? "all live" : "some sites silent",
+            note: online === sites.length ? "всички на живо" : "някои не изпращат данни",
           },
         ]}
       />
       {sites.length === 0 ? (
         <section className="empty-state">
-          <h2>No sites yet</h2>
-          <p>Run the seed script to create the demo sites: Home, Workshop and Office.</p>
+          <h2>Още няма обекти</h2>
+          <p>Пуснете скрипта за демо данни (app.seed), за да създадете обектите Home, Workshop и Office.</p>
         </section>
       ) : (
         <div className="site-grid">

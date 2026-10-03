@@ -14,17 +14,17 @@ describe("verdict", () => {
     const idle = metricsFor(scenario, run(scenario, idlePolicy)); // charges nothing, so it is "cheap"
     expect(idle.adjustedCostEur).toBeLessThan(autopilot.adjustedCostEur);
     const { headline, detail } = verdict(idle, autopilot, baseline);
-    expect(headline).toBe("Autopilot charged 10/10 cars on time; you managed 0/10.");
-    expect(detail).toContain("not comparable");
+    expect(headline).toBe("Автопилотът зареди навреме 10/10 коли; вие — 0/10.");
+    expect(detail).toContain("не е сравним");
   });
 
   it("compares against simple rules when the player has not played", () => {
-    expect(verdict(null, autopilot, baseline).headline).toContain("simple rules managed 7/10");
+    expect(verdict(null, autopilot, baseline).headline).toContain("простите правила — 7/10");
   });
 
   it("admits it when the player wins on cost with every car charged", () => {
     const better: RunMetrics = { ...autopilot, adjustedCostEur: autopilot.adjustedCostEur - 1 };
-    expect(verdict(better, autopilot, baseline).headline).toBe("You beat Autopilot by €1.00.");
+    expect(verdict(better, autopilot, baseline).headline).toBe("Победихте Автопилота с 1,00\u00a0€.");
   });
 });
 
@@ -38,9 +38,9 @@ describe("carViews", () => {
 
 describe("formatDuration", () => {
   it("formats hours as h and min", () => {
-    expect(formatDuration(1.5)).toBe("1 h 30 min");
-    expect(formatDuration(0.25)).toBe("15 min");
-    expect(formatDuration(2)).toBe("2 h");
-    expect(formatDuration(-0.5)).toBe("−30 min");
+    expect(formatDuration(1.5)).toBe("1 ч 30 мин");
+    expect(formatDuration(0.25)).toBe("15 мин");
+    expect(formatDuration(2)).toBe("2 ч");
+    expect(formatDuration(-0.5)).toBe("−30 мин");
   });
 });

@@ -4,9 +4,11 @@ import type { Device, DeviceKind, SiteSummary } from "@/lib/api";
 import { formatMoney, formatPowerBg, formatPrice } from "@/lib/format";
 import type { CostNow } from "@/lib/insights";
 import {
+  BATTERY_LABELS,
   batteryDirection,
   formatPercent,
   formatPower,
+  GRID_LABELS,
   gridDirection,
   powerParts,
   selfSufficiency,
@@ -75,29 +77,29 @@ function powerTile(watts: number | null): Pick<Tile, "value" | "unit"> {
 
 /** The live headline numbers for one site. Tiles for equipment the site does not have are omitted. */
 export function siteTiles(summary: SiteSummary, devices: Device[], extra: Tile[] = []): Tile[] {
-  const offline = "Not reporting";
+  const offline = "Не изпраща данни";
   const tiles: Tile[] = [];
   const sufficiency = selfSufficiency(summary);
 
   if (hasKind(devices, "solar_inverter")) {
     tiles.push({
       key: "solar",
-      label: "Solar",
+      label: "Слънце",
       icon: <SolarIcon />,
       tone: "solar",
       ...powerTile(summary.solar_w),
-      note: summary.solar_w === null ? offline : summary.solar_w > 20 ? "producing" : "not producing",
+      note: summary.solar_w === null ? offline : summary.solar_w > 20 ? "произвежда" : "не произвежда",
     });
   }
   if (hasKind(devices, "grid_meter")) {
     const direction = gridDirection(summary.grid_w);
     tiles.push({
       key: "grid",
-      label: "Grid",
+      label: "Мрежа",
       icon: <GridIcon />,
       tone: "grid",
       ...powerTile(summary.grid_w),
-      note: direction ?? offline,
+      note: direction ? GRID_LABELS[direction] : offline,
     });
   }
   if (hasKind(devices, "battery")) {
@@ -105,7 +107,7 @@ export function siteTiles(summary: SiteSummary, devices: Device[], extra: Tile[]
     const [value, unit] = summary.battery_soc_pct === null ? ["—", ""] : [String(Math.round(summary.battery_soc_pct)), "%"];
     tiles.push({
       key: "battery",
-      label: "Battery",
+      label: "Батерия",
       icon: <BatteryIcon level={summary.battery_soc_pct} />,
       tone: "battery",
       value,
@@ -114,8 +116,8 @@ export function siteTiles(summary: SiteSummary, devices: Device[], extra: Tile[]
         direction === null
           ? offline
           : direction === "idle"
-            ? "idle"
-            : `${direction} ${formatPower(Math.abs(summary.battery_w ?? 0))}`,
+            ? BATTERY_LABELS.idle
+            : `${BATTERY_LABELS[direction]} ${formatPower(Math.abs(summary.battery_w ?? 0))}`,
       meter: summary.battery_soc_pct,
     });
   }
@@ -123,20 +125,20 @@ export function siteTiles(summary: SiteSummary, devices: Device[], extra: Tile[]
     const chargers = devices.filter((device) => device.kind === "ev_charger").length;
     tiles.push({
       key: "ev",
-      label: "EV charging",
+      label: "Зареждане",
       icon: <EvIcon />,
       tone: "ev",
       ...powerTile(summary.ev_w),
-      note: summary.ev_w === null ? offline : `${chargers} charger${chargers === 1 ? "" : "s"}`,
+      note: summary.ev_w === null ? offline : `${chargers} ${chargers === 1 ? "зарядна станция" : "зарядни станции"}`,
     });
   }
   tiles.push({
     key: "consumption",
-    label: "Consumption",
+    label: "Консумация",
     icon: <BuildingIcon />,
     tone: "consumption",
     ...powerTile(summary.consumption_w),
-    note: sufficiency === null ? "total site use" : `${formatPercent(sufficiency)} self-supplied`,
+    note: sufficiency === null ? "общо за обекта" : `${formatPercent(sufficiency)} покрити без мрежата`,
     meter: sufficiency,
   });
   return [...tiles, ...extra];

@@ -185,7 +185,7 @@ export function Recommendations() {
       <div className="panel-head">
         <h2 id="assist-title">Препоръки</h2>
         <span className="muted">
-          Нищо не се изпраща, докато не натиснете „Приложи“. Историята е в <Link href={`/sites/${siteId}/activity`}>Activity</Link>.
+          Нищо не се изпраща, докато не натиснете „Приложи“. Историята е в <Link href={`/sites/${siteId}/activity`}>„Активност“</Link>.
         </span>
       </div>
       <RecommendationList

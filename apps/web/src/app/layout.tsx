@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "OptiMesh", template: "%s · OptiMesh" },
-  description: "Energy management for connected homes and businesses.",
+  description: "Управление на енергията за свързани домове и бизнеси.",
 };
 
 export const viewport: Viewport = {
@@ -17,7 +17,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="bg">
       <body>
         <SitesProvider>
           <AppShell>{children}</AppShell>
