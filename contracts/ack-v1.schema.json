@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "AckStatus": {
+      "enum": [
+        "applied",
+        "rejected"
+      ],
+      "title": "AckStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Published by the device to .../ack after it applied or refused a command.",
+  "properties": {
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "command_id": {
+      "format": "uuid",
+      "title": "Command Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/AckStatus"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "command_id",
+    "status",
+    "observed_at"
+  ],
+  "title": "CommandAck",
+  "type": "object"
+}

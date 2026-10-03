@@ -1,25 +1,23 @@
-"""Add configured device limits and deterministic history indexes."""
+"""Require object device limits and add deterministic history indexes.
 
-import sqlalchemy as sa
+What PR #20's 0002_registry added that 0002_live_loop does not already provide: the device
+limits column itself comes from 0002_live_loop (`limits`), so only its object check and the
+(observed_at, id) history indexes remain.
+"""
+
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
-revision = "0002"
-down_revision = "0001"
+revision = "0003"
+down_revision = "0002"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "devices",
-        sa.Column("operating_limits", postgresql.JSONB(), nullable=False, server_default="{}"),
-        schema="optimesh",
-    )
     op.create_check_constraint(
         op.f("ck_devices_limits_object"),
         "devices",
-        "jsonb_typeof(operating_limits) = 'object'",
+        "jsonb_typeof(limits) = 'object'",
         schema="optimesh",
     )
     for scope in ("site", "device"):
@@ -38,4 +36,3 @@ def downgrade():
     op.drop_constraint(
         op.f("ck_devices_limits_object"), "devices", type_="check", schema="optimesh"
     )
-    op.drop_column("devices", "operating_limits", schema="optimesh")
