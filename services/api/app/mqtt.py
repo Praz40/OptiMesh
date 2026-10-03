@@ -4,19 +4,24 @@ import asyncio
 import json
 import logging
 import ssl
+from collections import OrderedDict
+from hashlib import sha256
 from uuid import UUID
 
 import aiomqtt
 import paho.mqtt.client as paho
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
-from app.platform import InvalidRequest, NotFound, Platform
+from app.platform import DatabaseUnavailable, InvalidRequest, NotFound, Platform
 from app.schemas import CommandAck, CommandMessage, Telemetry
 from app.topics import Channel, device_topic, parse_device_topic, subscription
 
 logger = logging.getLogger(__name__)
 MAX_PAYLOAD_BYTES = 4096
+MAX_UNEXPECTED_RETRIES = 3
+MAX_RETRY_ENTRIES = 256
 
 
 def tls_context(settings: Settings) -> ssl.SSLContext | None:
@@ -68,6 +73,7 @@ class MqttBridge:
         )
         self._platform = platform
         self._client: aiomqtt.Client | None = None
+        self._unexpected_failures: OrderedDict[tuple[str, bytes], int] = OrderedDict()
 
     @property
     def connected(self) -> bool:
@@ -125,10 +131,13 @@ class MqttBridge:
             self._ack_topic,
         ):
             return
+        retry_key = None
         try:
             if not isinstance(payload, bytes | bytearray | str):
                 raise ValueError("Unsupported payload type")
-            size = len(payload.encode("utf-8")) if isinstance(payload, str) else len(payload)
+            encoded = payload.encode("utf-8") if isinstance(payload, str) else bytes(payload)
+            retry_key = (topic, sha256(encoded).digest())
+            size = len(encoded)
             if not 0 < size <= MAX_PAYLOAD_BYTES:
                 raise ValueError("Invalid payload size")
             data = json.loads(payload)
@@ -148,12 +157,27 @@ class MqttBridge:
             RecursionError,
             NotFound,
             InvalidRequest,
+            DatabaseUnavailable,
         ):
             # ValidationError is a ValueError; listed for clarity.
             logger.warning("Rejected invalid MQTT message")
+        except SQLAlchemyError:
+            # Database outages must not exhaust a poison-message budget and lose readings.
+            raise aiomqtt.MqttError("MQTT database processing failed") from None
         except Exception:
-            # No PUBACK: reconnect the persistent session so the broker can replay.
-            raise aiomqtt.MqttError("MQTT message processing failed") from None
+            # Bound unexpected deterministic bugs without storing payloads or relying on
+            # packet IDs (which can change on replay). Cache size is bounded too.
+            assert retry_key is not None
+            attempts = self._unexpected_failures.get(retry_key, 0) + 1
+            self._unexpected_failures[retry_key] = attempts
+            self._unexpected_failures.move_to_end(retry_key)
+            if len(self._unexpected_failures) > MAX_RETRY_ENTRIES:
+                self._unexpected_failures.popitem(last=False)
+            if attempts < MAX_UNEXPECTED_RETRIES:
+                raise aiomqtt.MqttError("MQTT message processing failed") from None
+            logger.warning("Rejected MQTT message after repeated unexpected processing errors")
+        if retry_key is not None:
+            self._unexpected_failures.pop(retry_key, None)
 
     async def publish_command(
         self, site_id: UUID, device_id: UUID, message: CommandMessage

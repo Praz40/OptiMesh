@@ -196,7 +196,10 @@ The `(device_id, message_id)` unique constraint preserves the first reading on r
 
 aiomqtt uses Paho with manual acknowledgements, MQTT 3.1.1 and a persistent session
 for the configured stable client ID. PUBACK follows committed ingestion or duplicate
-handling; permanently invalid messages are consumed. Transient failures reconnect
+handling; permanently invalid messages and deliveries without a configured database are consumed.
+Unexpected processing bugs are retried up to three times per topic/payload digest,
+then consumed so they cannot block later telemetry; the retry cache is bounded.
+Transient database failures remain unacknowledged and reconnect
 with exponential backoff (1–30s), without PUBACK, allowing broker replay. Both the
 telemetry and ack subscriptions must receive QoS 1 grants before status is connected.
 Broker queue retention/persistence still bounds replay; this is not an unconditional

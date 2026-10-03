@@ -13,11 +13,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy.exc import OperationalError
 
 from app.config import Settings
 from app.main import create_app
 from app.mqtt import MqttBridge, ReliableClient
-from app.platform import InvalidRequest, Platform
+from app.platform import DatabaseUnavailable, InvalidRequest, Platform
 from app.schemas import CommandMessage, Telemetry
 
 
@@ -211,7 +212,9 @@ def test_ack_and_command_support_preserved(bridge, settings):
 
 
 def test_transient_failure_requests_reconnect(bridge, settings):
-    bridge._platform.ingest_telemetry.side_effect = RuntimeError("private database URI")
+    bridge._platform.ingest_telemetry.side_effect = OperationalError(
+        "test", {}, RuntimeError("private database URI")
+    )
     with pytest.raises(aiomqtt.MqttError, match="processing failed") as error:
         asyncio.run(
             bridge.handle(settings.mqtt_telemetry_topic, reading(settings).model_dump_json())
@@ -318,7 +321,7 @@ def test_run_ack_after_processing_and_reconnect(bridge, settings, monkeypatch, f
     async def ingest(telemetry):
         events.append("persist")
         if failure == "transient":
-            raise RuntimeError("DB failure")
+            raise OperationalError("test", {}, RuntimeError("DB failure"))
         if failure == "permanent":
             raise InvalidRequest("stale")
         return False
@@ -384,3 +387,44 @@ def test_legacy_ca_and_shared_ca_configuration(settings, ca_path, tmp_path):
     other.write_bytes(ca_path.read_bytes())
     with pytest.raises(ValidationError, match="same CA"):
         Settings(_env_file=None, **(settings.model_dump() | {"mqtt_ca_file": other}))
+
+
+def test_missing_database_is_permanent(bridge, settings):
+    bridge._platform.ingest_telemetry.side_effect = DatabaseUnavailable()
+    asyncio.run(bridge.handle(settings.mqtt_telemetry_topic, reading(settings).model_dump_json()))
+    assert not bridge._unexpected_failures
+
+
+def test_unexpected_poison_message_retries_are_bounded(bridge, settings, caplog):
+    bad = reading(settings).model_dump_json()
+    bridge._platform.ingest_telemetry.side_effect = TypeError("private payload")
+    for _ in range(2):
+        with pytest.raises(aiomqtt.MqttError):
+            asyncio.run(bridge.handle(settings.mqtt_telemetry_topic, bad))
+    # The third attempt returns normally so run() can acknowledge and advance.
+    asyncio.run(bridge.handle(settings.mqtt_telemetry_topic, bad))
+    assert not bridge._unexpected_failures
+    assert "private payload" not in caplog.text
+    bridge._platform.ingest_telemetry.side_effect = None
+    asyncio.run(bridge.handle(settings.mqtt_telemetry_topic, reading(settings).model_dump_json()))
+
+
+def test_database_outage_does_not_exhaust_poison_budget(bridge, settings):
+    bridge._platform.ingest_telemetry.side_effect = OperationalError("test", {}, Exception())
+    payload = reading(settings).model_dump_json()
+    for _ in range(5):
+        with pytest.raises(aiomqtt.MqttError):
+            asyncio.run(bridge.handle(settings.mqtt_telemetry_topic, payload))
+    assert not bridge._unexpected_failures
+
+
+def test_poison_retry_cache_is_bounded(bridge, settings):
+    from app.mqtt import MAX_RETRY_ENTRIES
+
+    bridge._platform.ingest_telemetry.side_effect = KeyError("test")
+    for _ in range(MAX_RETRY_ENTRIES + 1):
+        with pytest.raises(aiomqtt.MqttError):
+            asyncio.run(
+                bridge.handle(settings.mqtt_telemetry_topic, reading(settings).model_dump_json())
+            )
+    assert len(bridge._unexpected_failures) == MAX_RETRY_ENTRIES
