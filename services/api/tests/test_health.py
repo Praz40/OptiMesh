@@ -37,3 +37,19 @@ def test_registry_post_preflight_allows_authorization():
         assert response.status_code == 200
         assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
         assert "POST" in response.headers["access-control-allow-methods"]
+
+
+def test_registry_get_preflight_allows_authorization():
+    with TestClient(create_app(Settings(_env_file=None, database_url=None))) as client:
+        response = client.options(
+            "/sites",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+        assert "GET" in response.headers["access-control-allow-methods"]
+        assert "authorization" in response.headers["access-control-allow-headers"].lower()
