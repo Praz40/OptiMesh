@@ -1,0 +1,76 @@
+name: CI
+on:
+  push:
+    branches: [main, develop, 'feature/**', 'release/**', 'hotfix/**']
+  pull_request:
+    branches: [main, develop, 'release/**', 'hotfix/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/api
+    env:
+      DATABASE_URL: postgresql+psycopg://optimesh_ci:optimesh@localhost:5432/optimesh
+      TEST_DATABASE_URL: postgresql+psycopg://optimesh_ci:optimesh@localhost:5432/optimesh
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: optimesh
+          POSTGRES_USER: optimesh_ci
+          POSTGRES_PASSWORD: optimesh
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U optimesh_ci -d optimesh"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: '0.12.22'
+          enable-cache: true
+          cache-dependency-glob: services/api/uv.lock
+      - run: uv sync --frozen --python 3.12
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen mypy app
+      - name: Migration round trip
+        run: |
+          uv run --frozen alembic upgrade head
+          uv run --frozen alembic check
+          uv run --frozen alembic downgrade base
+          uv run --frozen alembic upgrade head
+      - run: uv run --frozen pytest -q
+      - name: Project setup and configuration checks
+        run: |
+          uv run --frozen python -m unittest discover -s ../../scripts/tests
+          uv run --frozen python ../../scripts/setup_github.py --repo "${{ github.repository }}" --dry-run
+          uv run --frozen python ../../scripts/validate_config.py

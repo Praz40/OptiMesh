@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# OptiMesh workspace
+.codex-tools/
+.superpowers/
+node_modules/
+.next/
+*.tsbuildinfo
+.env*
+!.env.example
+playwright-report/
+test-results/
+
+# Keep frontend source despite the original Python lib/ rule
+!apps/web/src/lib/
+!apps/web/src/lib/**
