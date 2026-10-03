@@ -64,7 +64,7 @@ Steps 1–4 carry measurements to the dashboard; steps 5–10 carry a command ba
 - **One device contract (v1)**: telemetry, commands and acknowledgements over MQTT. The hardware-facing spec is [docs/contracts.md](docs/contracts.md); JSON Schemas and examples are in `contracts/`. Telemetry ingestion is idempotent per `message_id`, over MQTT or `POST /api/v1/telemetry`.
 - **Live loop in both directions**: the MQTT bridge stores telemetry in PostgreSQL and streams a snapshot of each site over `/api/v1/sites/{site_id}/live`. Commands are validated against the device's capabilities and limits and go `pending → sent → applied / rejected / expired / failed`; only the device's acknowledgement makes a command `applied`.
 - **MQTT over verified TLS** for the Raspberry Pi broker; plain MQTT is accepted only for an anonymous local broker. See [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md).
-- **Forecast, costs and recommendations** (API only, Bulgarian texts):
+- **Forecast, costs and recommendations** (API with Bulgarian texts, shown in the „Прогноза“ and „Разходи“ tabs and in „Асистент“ mode):
   - `GET /api/v1/sites/{site_id}/forecast`: the next 24 hours, hourly: expected solar (clear-sky curve × installed inverter capacity × 0.85), load (the past week's average at that hour, or the current consumption) and import/export prices, with the assumptions listed.
   - `GET /api/v1/sites/{site_id}/costs`: today's energy cost at the grid meter (local day), from interval energy.
   - `GET /api/v1/sites/{site_id}/recommendations`: up to five proposed commands with the reason and a rough saving. Nothing is sent; applying one goes through `POST /api/v1/sites/{site_id}/devices/{device_id}/commands`.
@@ -274,4 +274,4 @@ From `git log` and the merged pull requests.
 - One invented demo time-of-use tariff for every site (`app/tariff.py`), not a supplier's tariff.
 - No second third-party device adapter (#18).
 - No deployment (#15).
-- Dashboard text is still English; the team decided on Bulgarian UI text.
+- The dashboard is in Bulgarian, except the site and device names from `app/seed.py` and the API's error messages, which are still English.
