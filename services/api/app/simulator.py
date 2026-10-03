@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import random
+import sys
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -351,8 +352,13 @@ def main() -> None:
         raise SystemExit("No devices to simulate. Did you run `python -m app.seed`?")
     simulator = Simulator(sites, settings.mqtt_topic_prefix, args.interval, args.hour)
     password = settings.mqtt_password.get_secret_value() if settings.mqtt_password else None
+    # paho-mqtt needs add_reader/add_writer, which Windows' default Proactor loop lacks.
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     try:
-        asyncio.run(simulator.run(args.mqtt_host, args.mqtt_port, settings.mqtt_username, password))
+        asyncio.run(
+            simulator.run(args.mqtt_host, args.mqtt_port, settings.mqtt_username, password),
+            loop_factory=loop_factory,
+        )
     except KeyboardInterrupt:
         pass
 
