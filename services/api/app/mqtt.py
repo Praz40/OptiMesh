@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 MAX_PAYLOAD_BYTES = 4096
 
 
+def tls_context(settings: Settings) -> ssl.SSLContext | None:
+    """Shared verified TLS for the API bridge and simulator, with no insecure fallback."""
+    if not settings.mqtt_tls:
+        return None
+    ca = settings.mqtt_ca_file or settings.mqtt_ca_cert
+    context = ssl.create_default_context(cafile=str(ca) if ca is not None else None)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
 class ReliableClient(aiomqtt.Client):
     """Isolate aiomqtt's internal Paho access for commit-before-PUBACK delivery.
 
@@ -47,12 +57,8 @@ class MqttBridge:
             settings.mqtt_password.get_secret_value() if settings.mqtt_password else None
         )
         self._identifier = settings.mqtt_client_id
-        self._tls_context = None
-        if settings.mqtt_tls:
-            if settings.mqtt_ca_cert is None:
-                raise ValueError("MQTT_CA_CERT is required")
-            self._tls_context = ssl.create_default_context(cafile=str(settings.mqtt_ca_cert))
-            self._tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        # Load/validate the CA once at startup, before the reconnect loop.
+        self._tls_context = tls_context(settings)
         self._prefix = settings.mqtt_topic_prefix
         self._telemetry_topic = settings.mqtt_telemetry_topic
         self._ack_topic = (

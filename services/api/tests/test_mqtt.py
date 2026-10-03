@@ -372,3 +372,15 @@ def test_anonymous_local_client_does_not_require_tls():
 def test_compose_broker_configuration():
     local = Settings(_env_file=None, mqtt_host="mqtt", mqtt_port=1883, mqtt_tls=False)
     assert MqttBridge(local, Mock())._tls_context is None
+
+
+def test_legacy_ca_and_shared_ca_configuration(settings, ca_path, tmp_path):
+    from app.mqtt import tls_context
+
+    settings.mqtt_ca_file = ca_path
+    same = Settings(_env_file=None, **settings.model_dump())
+    assert tls_context(same).check_hostname is True
+    other = tmp_path / "other.crt"
+    other.write_bytes(ca_path.read_bytes())
+    with pytest.raises(ValidationError, match="same CA"):
+        Settings(_env_file=None, **(settings.model_dump() | {"mqtt_ca_file": other}))

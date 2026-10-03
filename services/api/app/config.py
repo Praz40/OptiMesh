@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
+from pydantic import Field, FilePath, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.topics import Channel, parse_device_topic
@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     mqtt_host: str | None = None
     mqtt_port: int = Field(default=8883, ge=1, le=65535)
     mqtt_tls: bool = True
+    # MQTT_CA_FILE is shared with the simulator; MQTT_CA_CERT remains a legacy alias.
+    mqtt_ca_file: FilePath | None = None
     mqtt_ca_cert: Path | None = None
     mqtt_client_id: str | None = Field(default=None, min_length=1, max_length=128)
     mqtt_telemetry_topic: str | None = None
@@ -63,6 +65,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_mqtt_configuration(self) -> "Settings":
+        if self.mqtt_ca_file is not None and self.mqtt_ca_cert is not None:
+            if self.mqtt_ca_file.resolve() != self.mqtt_ca_cert.resolve():
+                raise ValueError("MQTT_CA_FILE and MQTT_CA_CERT must refer to the same CA")
+        ca = self.mqtt_ca_file or self.mqtt_ca_cert
+        if ca is not None and not self.mqtt_tls:
+            raise ValueError("MQTT CA is set but MQTT_TLS is false; set MQTT_TLS=true")
         if self.mqtt_telemetry_topic is not None:
             parts = parse_device_topic(self.mqtt_topic_prefix, self.mqtt_telemetry_topic)
             if parts is None or parts.channel != Channel.TELEMETRY:
@@ -72,7 +80,7 @@ class Settings(BaseSettings):
         if not self.mqtt_tls:
             # Preserve the anonymous local simulator broker, never downgrade a remote broker.
             if self.mqtt_host not in ("localhost", "127.0.0.1", "::1", "mqtt") or any(
-                v is not None for v in (self.mqtt_ca_cert, self.mqtt_username, self.mqtt_password)
+                v is not None for v in (ca, self.mqtt_username, self.mqtt_password)
             ):
                 raise ValueError(
                     "Plain MQTT is allowed only for an explicit anonymous local development broker"
@@ -81,7 +89,7 @@ class Settings(BaseSettings):
             not v
             for v in (
                 self.database_url,
-                self.mqtt_ca_cert,
+                ca,
                 self.mqtt_username,
                 self.mqtt_password,
                 self.mqtt_client_id,
