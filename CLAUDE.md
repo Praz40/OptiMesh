@@ -81,7 +81,8 @@ After changing a Pydantic contract run `uv run --frozen python -m app.export_con
 - `game/` is Daniel's Godot project, imported from DGtao13/OptiMesh-Game with its history. CI does not build or test
   it. Do not change anything under `game/` as a side effect of other work; its scenario and numbers are not
   comparable with `app/sim` or the `/simulator` game.
-- UI text in Bulgarian (team decision). The current dashboard strings are still English.
+- UI text in Bulgarian (team decision). Since PR #38 the dashboard and the `/simulator` game are in Bulgarian; the seed
+  site and device names (`app/seed.py`) and the API's error messages are still English.
 - No new dependency without saying why.
 
 ## Working style
