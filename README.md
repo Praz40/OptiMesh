@@ -39,6 +39,8 @@ uv run --frozen python -m app.simulator                    # virtual devices (ad
 npm ci && npm run dev                                      # dashboard on :3000 (repo root)
 ```
 
+On Windows, keep `--reload` on the API command: without it uvicorn uses the Proactor event loop, which the MQTT client cannot run on.
+
 Open http://localhost:3000, pick a site and flip a switch. The command log shows `Applied` only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
 ### MQTT over TLS

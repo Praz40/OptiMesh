@@ -247,3 +247,72 @@ class SiteSnapshot(BaseModel):
     site: SiteOut
     devices: list[DeviceOut]
     live: list[DeviceLive]
+
+
+# --- Forecasts, costs and recommendations -----------------------------------------
+
+
+class ForecastInterval(BaseModel):
+    """One forecast hour. Forecast values are expectations, never measurements."""
+
+    start: AwareDatetime
+    end: AwareDatetime
+    solar_w: float | None  # expected production
+    load_w: float | None  # expected consumption
+    import_price: float  # per kWh, in the forecast's currency
+    export_price: float
+
+
+class ForecastOut(BaseModel):
+    site_id: UUID
+    timezone: str
+    currency: str
+    tariff: str
+    generated_at: AwareDatetime
+    interval_minutes: int
+    intervals: list[ForecastInterval]
+    assumptions: list[str]
+
+
+class CostInterval(BaseModel):
+    start: AwareDatetime
+    end: AwareDatetime
+    import_wh: float
+    export_wh: float
+    import_price: float
+    export_price: float
+    cost: float  # import cost minus export revenue
+
+
+class CostsOut(BaseModel):
+    """Today's measured energy cost at the grid meter, local day."""
+
+    site_id: UUID
+    timezone: str
+    currency: str
+    tariff: str
+    day_start: AwareDatetime
+    as_of: AwareDatetime
+    has_meter: bool
+    intervals: list[CostInterval]
+    import_wh: float
+    export_wh: float
+    import_cost: float
+    export_revenue: float
+    cost: float
+    projected_day_cost: float | None
+    assumptions: list[str]
+
+
+class Recommendation(BaseModel):
+    """A proposed command. Assist mode applies it through the normal command API."""
+
+    id: str  # stable per rule and device, so clients can track it across refreshes
+    rule: str
+    device_id: UUID
+    device_name: str
+    title: str
+    detail: str
+    action: CommandRequest
+    saving_per_hour: float  # rough estimate, in `currency`
+    currency: str
