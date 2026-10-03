@@ -7,7 +7,7 @@ State of the web app, the scenario simulator and the started forecast/cost/recom
 | `feat(web): app shell, live dashboard and site switching` | #7, #17 (partly) | Done, tested |
 | `feat(web): office scenario simulator with Autopilot comparison` | #11, #14 | Done, tested |
 | `fix(simulator): run the MQTT client on a selector loop on Windows` | none | Done |
-| `feat(api): tariff, forecast, cost and recommendation modules` | #12, #10 (backend half) | **Not routed yet**, see "Next steps" |
+| `feat(api): tariff, forecast, cost and recommendation modules` | #12, #10 (backend half) | Routed by `feature/forecast-tariff`, see section 3 |
 
 Checks at the time of writing: `npm test` 74 passed, `npm run lint`, `npm run typecheck` and `npm run build` clean; backend `ruff`, `ruff format --check`, `mypy app` clean and `pytest` 52 passed. The dashboard was verified in a browser against the real API, PostgreSQL, MQTT broker and Python simulator: command round trip, site switching, API restart and reconnect, mobile width and dark mode.
 
@@ -97,9 +97,22 @@ It sees only the day-ahead forecast and the past, never future arrivals or actua
 
 To swap in a real optimizer: implement `Policy = (scenario, state) => Controls` and add it as a column in `components/simulator/sim-results.tsx`.
 
-## 3. Forecast, costs, recommendations (backend started, not exposed)
+## 3. Forecast, costs, recommendations (routed)
 
-New modules in `services/api/app`, pure and type-checked, **not yet called by any route**:
+Routed in `feature/forecast-tariff` (#12) through `app/insights.py`, which reads the platform and calls the pure modules below. Same rules as the other `/api/v1` routes: no authentication yet (#3), 404 for an unknown site, 503 without a database.
+
+| Route | Response |
+|---|---|
+| `GET /api/v1/sites/{site_id}/forecast` | `ForecastOut`: 24 hourly intervals from the current local hour, expected solar and load, import/export price, timezone, currency, assumptions |
+| `GET /api/v1/sites/{site_id}/costs` | `CostsOut`: today (local day) at the grid meter, per hour and in total, plus the projected day cost |
+| `GET /api/v1/sites/{site_id}/recommendations` | `list[Recommendation]`: up to 5 proposed commands; nothing is sent until Assist posts `action` to `/commands` |
+
+- `assumptions`, recommendation `title`/`detail` and the tariff name are Bulgarian; show them verbatim. Rule ids and field names stay English.
+- `DEFAULT_TARIFF` is an invented demo time-of-use tariff, not the day-ahead prices `app/sim` replays; the response says so in `assumptions`.
+- A new database has no week of history, so the load forecast falls back to the current consumption; `assumptions` says how many hours used which source.
+- The 7-day load profile is cached per site for 5 minutes. `/costs` still aggregates today's grid-meter readings on every call, so poll it every 10–30 s, not every second.
+
+The modules behind them, in `services/api/app`, pure and type-checked:
 
 - `tariff.py`: `DEFAULT_TARIFF`, the same time-of-use bands as the simulator (EUR, export 0.06).
 - `forecast.py`: `build_forecast(site, devices, tariff, now, load_by_hour)` -> `ForecastOut`, 24 hourly intervals. Solar = clear-sky curve × inverter `max_power_w` × 0.85. Load = past week's mean at that hour, else current consumption. Response lists its assumptions.
@@ -110,7 +123,7 @@ New modules in `services/api/app`, pure and type-checked, **not yet called by an
 
 ## Next steps
 
-1. **Wire the API** (planned: an `app/insights.py` beside `platform.py`, because `recommendations.py` imports `platform`):
+1. **Wire the API** (done in `feature/forecast-tariff`, see section 3; kept here as the record of the plan):
    - `forecast(platform, site_id, now)`: snapshot -> `hourly_power(site, tz, now − 7 d)` -> per hour `grid + solar − battery` when all those devices have data -> `build_forecast`.
    - `costs(...)`: grid meter ids from the snapshot, `day_start` = local midnight, `meter_hours(...)` -> `build_costs`.
    - `recommendations(...)`: `recommend(snapshot, DEFAULT_TARIFF, forecast, now)`.
