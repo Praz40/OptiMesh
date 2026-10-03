@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { ModeSwitch } from "@/components/mode-switch";
 import { useNow } from "@/hooks/use-now";
 import { useSiteLive, type Connection } from "@/hooks/use-site-live";
+import { useSiteMode } from "@/hooks/use-site-mode";
 import { useSites } from "@/hooks/use-sites";
 import { formatAgo } from "@/lib/energy";
 
@@ -59,6 +61,7 @@ function LivePill({ connection, updatedAt }: { connection: Connection; updatedAt
 
 export function SiteFrame({ children }: { children: ReactNode }) {
   const { siteId, snapshot, connection } = useSiteLive();
+  const { mode, select } = useSiteMode();
   const pathname = usePathname();
   const base = `/sites/${siteId}`;
   const tab = pathname.slice(base.length).replace(/^\//, "").split("/")[0] ?? "";
@@ -96,6 +99,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
           <h1>{site.name}</h1>
         </div>
         <div className="head-actions">
+          <ModeSwitch mode={mode} onSelect={select} />
           <SiteSwitcher siteId={siteId} tab={tab} />
           <LivePill connection={connection} updatedAt={site.summary.updated_at} />
         </div>

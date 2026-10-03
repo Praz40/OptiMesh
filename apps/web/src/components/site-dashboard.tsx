@@ -6,14 +6,18 @@ import { CommandLog, sortedCommands } from "@/components/command-log";
 import { DeviceList } from "@/components/device-list";
 import { EnergyFlow } from "@/components/energy-flow";
 import { Insights, liveInsights } from "@/components/insights";
+import { ModeNotice } from "@/components/mode-notice";
+import { Recommendations } from "@/components/recommendations";
 import { costNowTile, KpiTiles, siteTiles } from "@/components/site-kpis";
 import { TimeChart, type ChartSeries } from "@/components/time-chart";
 import { usePolled } from "@/hooks/use-polled";
 import { useSiteLive } from "@/hooks/use-site-live";
+import { useSiteMode } from "@/hooks/use-site-mode";
 import { api, type Device, type DeviceKind } from "@/lib/api";
 import { formatClock, formatKw, formatPower, type FlowNode } from "@/lib/energy";
 import { costNow, FORECAST_POLL_MS } from "@/lib/insights";
 import { latestCommandByDevice } from "@/lib/live-state";
+import { canSendCommands } from "@/lib/site-mode";
 import type { TrendPoint } from "@/lib/trend";
 
 const FLOW_KINDS: [FlowNode, DeviceKind][] = [
@@ -66,7 +70,8 @@ const flexible = (device: Device) =>
   device.capabilities.includes("switch") || device.capabilities.includes("power_setpoint");
 
 export function SiteDashboard() {
-  const { snapshot, commands, sendCommand, trend, backfilled, siteId } = useSiteLive();
+  const { snapshot, commands, trend, backfilled, siteId } = useSiteLive();
+  const { mode, send } = useSiteMode();
   const latest = useMemo(() => latestCommandByDevice(commands), [commands]);
   const recent = useMemo(() => sortedCommands(commands, 5), [commands]);
   // Only for the current price of the "cost now" tile.
@@ -82,6 +87,8 @@ export function SiteDashboard() {
       <KpiTiles tiles={siteTiles(summary, devices, cost ? [costNowTile(cost)] : [])} />
 
       <div className="grid-2">
+        {mode === "assist" ? <Recommendations /> : <ModeNotice mode={mode} />}
+
         <section className="panel" aria-labelledby="flow-title">
           <div className="panel-head">
             <h2 id="flow-title">Energy flow</h2>
@@ -129,7 +136,14 @@ export function SiteDashboard() {
               <h2 id="controls-title">Flexible loads</h2>
               <span className="muted">Changes apply only after the device confirms them.</span>
             </div>
-            <DeviceList devices={devices} live={live} commands={latest} send={sendCommand} filter={flexible} />
+            <DeviceList
+              devices={devices}
+              live={live}
+              commands={latest}
+              send={send}
+              readOnly={!canSendCommands(mode)}
+              filter={flexible}
+            />
           </section>
         )}
       </div>
