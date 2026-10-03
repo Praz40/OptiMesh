@@ -1,0 +1,14 @@
+/include/config.local.h
+/certs/
+/.pio/
+/build/
+/sdkconfig
+/sdkconfig.*
+!/sdkconfig.defaults
+/.vscode/
+*.bin
+*.elf
+*.map
+*.obj
+*.exe
+*.jsonl
