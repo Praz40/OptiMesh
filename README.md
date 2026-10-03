@@ -21,9 +21,10 @@ dashboard --REST--> API --MQTT--> device --ack--> API --WebSocket--> dashboard
 - **Simulator**: virtual devices for the demo sites, speaking the same MQTT contract as hardware. It can stand in for the ESP32 with `--include-hardware`.
 - **Dashboard**: a Portfolio page (all sites) and a Site page with KPIs, an animated energy flow, a live device list with switch and power-limit controls, and a command log.
 - Demo seed: Home, Workshop (where the physical ESP32 lives) and Office, with fixed UUIDs.
+- **Scenario simulator and Autopilot** (`services/api/app/sim`, no API or UI yet): a deterministic office day (10 EVs, 3 chargers, battery, solar, Bulgarian day-ahead prices) and a rolling-horizon LP scheduler. `uv run --frozen python -m app.sim.scenario_office` from services/api prints the no-management / Autopilot / perfect-foresight comparison. This is separate from the MQTT device simulator above.
 - **Authenticated provisioning and history** (`/sites`): Supabase bearer-token verification, site and device provisioning and paginated UTC history, owner-scoped. See [below](#authenticated-provisioning-and-history-sites).
 
-Not built yet: authentication on `/api/v1` and the WebSocket (any client can read and command; **keep the API on localhost or a trusted LAN**), tariffs/costs, forecasts, the optimizer, the scenario game and deployment.
+Not built yet: authentication on `/api/v1` and the WebSocket (any client can read and command; **keep the API on localhost or a trusted LAN**), tariffs/costs and forecasts in the live slice, an API and screen for the scenario simulator (the game), and deployment.
 
 ## Run the live demo
 
