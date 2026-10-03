@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.auth import JwtVerifier
 from app.config import Settings
 from app.database import build_engine
+from app.mqtt import MqttSubscriber
 from app.registry import router
 
 logger = logging.getLogger(__name__)
@@ -20,11 +22,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings if settings is not None else Settings()
     engine = build_engine(config.database_url.get_secret_value()) if config.database_url else None
 
+    subscriber = MqttSubscriber(config, engine) if config.mqtt_host and engine is not None else None
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
+            if subscriber is not None:
+                subscriber.start()
             yield
         finally:
+            if subscriber is not None:
+                await asyncio.to_thread(subscriber.stop)
             if engine is not None:
                 engine.dispose()
 
@@ -62,6 +70,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.warning("Database readiness check failed")
             raise HTTPException(status_code=503, detail="Database unavailable") from None
         return {"status": "ready"}
+
+    @application.get("/status")
+    def status() -> dict[str, str]:
+        return {"mqtt": subscriber.status if subscriber is not None else "disabled"}
 
     return application
 

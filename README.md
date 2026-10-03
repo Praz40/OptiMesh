@@ -16,7 +16,7 @@ Hackathon foundation for a modular energy-management platform. Read [the feasibi
 - Validated [shared telemetry contract](docs/contracts.md), example payload and generated JSON Schema.
 - GitFlow documentation, PR/issue templates, one `.coderabbit.yaml`, CI and GitHub backlog setup.
 
-MQTT, WebSockets, login UI, membership/role authorization, commands, optimizer and simulator are future issues. No hosted database or deployment is provisioned by this template.
+Optional verified-TLS MQTT telemetry ingestion is implemented. WebSockets, login UI, membership/role authorization, commands, optimizer and simulator are future issues. No hosted database or deployment is provisioned by this template.
 
 ## Quick start
 
@@ -102,6 +102,95 @@ History requires timezone-aware `start` and `end` query parameters, normalizes t
 Responses contain `items` and `next_cursor`. Follow a non-null cursor using the same site, device and time bounds; the page size may change. Ordering is ascending by `observed_at` and then `id`, so equal timestamps paginate without duplicates. Cursors are validated pagination positions, not authorization credentials or a snapshot of concurrent ingestion.
 
 Authorized empty collections return 200 with an empty list (or empty history page). Missing, foreign and site/device-mismatched resources return 404 to avoid exposing another user's data. Invalid input returns 422; database failures return 503 without internal details.
+
+## Raspberry Pi MQTT telemetry ingestion
+
+The subscriber uses the existing telemetry v1 Pydantic contract and PostgreSQL
+`Measurement` table. No additional migration, HTTP ingestion endpoint, device
+auto-registration, command publisher or dashboard change is needed.
+
+From `services/api`, run `uv sync --frozen --python 3.12` and configure the ignored
+`.env` using `.env.example`. MQTT stays disabled when `MQTT_HOST` is unset.
+When enabled, these variables are required:
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Existing backend PostgreSQL connection URI |
+| `MQTT_HOST` | `192.168.0.23` for the verified Raspberry Pi broker |
+| `MQTT_PORT` | `8883` (default) |
+| `MQTT_CA_CERT` | Absolute path to the trusted public CA certificate, outside Git |
+| `MQTT_USERNAME` | Separate backend subscriber identity |
+| `MQTT_PASSWORD` | Its password, only in local environment/configuration |
+| `MQTT_CLIENT_ID` | Stable, unique backend ID, e.g. `optimesh-backend-demo` |
+| `MQTT_TELEMETRY_TOPIC` | Exact `optimesh/v1/sites/{site_id}/devices/{device_id}/telemetry` |
+
+Use assigned canonical UUIDs in the topic. The currently verified topic is
+`optimesh/v1/sites/0e708814-7d96-4d44-8c6b-6e841346bd34/devices/42c485b1-f4f0-436b-ae5c-f86b7285055b/telemetry`.
+These IDs must already belong to the same device/site registry pair in the target
+database. Broker identities and ACLs authorize MQTT publications/subscriptions;
+payload UUIDs alone are not credentials. The backend identity needs read access
+to this topic. Never reuse the ESP32 publish identity for the subscriber.
+
+TLS is mandatory, verifies the CA chain and hostname/IP, and requires TLS 1.2 or
+newer. The verified broker certificate includes `192.168.0.23` in its IP SAN.
+There is no insecure/plaintext fallback. No CA private key is needed. Do not
+commit passwords, local `.env` files, private keys, firmware configuration or CA
+files. Credentials and payload/error contents are omitted from application logs.
+`SUPABASE_URL` remains necessary to use the existing authenticated history API.
+
+Run one ingest-enabled API process using `uv run --frozen uvicorn app.main:app`.
+Avoid `--reload` and multiple workers for this first hardware test; two consumers
+sharing a client ID disconnect each other. `GET /status` returns only
+`{"mqtt":"disabled"}`, `{"mqtt":"disconnected"}` or `{"mqtt":"connected"}`.
+Connected means the broker accepted the QoS 1 subscription, not that a measurement
+has already committed. `/health` and `/ready` retain their existing behavior.
+
+One background worker processes deliveries sequentially using a separate DB
+session/transaction each time. PostgreSQL statement/lock waits are limited locally
+to 5s/3s. The MQTT network loop can pause during that transaction; this design is
+for the current approximately five-second stream, not high-volume ingestion.
+
+MQTT 3.1.1 uses QoS 1, Paho 2.x `manual_ack=True`, and `clean_session=False` with
+the stable client ID. PUBACK is sent only after commit or a committed duplicate
+check. The named `(device_id, message_id)` unique constraint implements
+first-write-wins: redelivery never overwrites the original reading/receipt time.
+Malformed/oversized payloads, invalid topics, schema failures, mismatched IDs,
+unknown devices and deliveries outside the configured topic are permanent
+rejections; they are consumed with PUBACK to prevent poison-message loops.
+
+Transient database/processing failures receive no PUBACK. The worker disconnects
+and reconnects with backoff, allowing the broker to redeliver outstanding QoS 1
+messages. Transport reconnects resubscribe and require a successful SUBACK.
+This is at-least-once processing with idempotent persistence, not an unconditional
+end-to-end delivery guarantee. Confirm Mosquitto persistent-session retention,
+queue limits and disk persistence: messages published before the first
+subscription or beyond broker retention may be unavailable. QoS 0 publications
+are rejected and cannot be recovered. Changing the client ID abandons the old
+session; when changing the topic under the same ID, clear obsolete broker
+subscriptions operationally (the adapter rejects deliveries outside its new topic).
+
+Paho's [2.1.0 receive path](https://github.com/eclipse-paho/paho.mqtt.python/blob/v2.1.0/src/paho/mqtt/client.py)
+skips automatic QoS 1 PUBACK with manual acknowledgement enabled; `ack(mid, 1)`
+sends PUBACK explicitly. Paho client-side session state is in memory. Incoming
+unacknowledged QoS 1 replay relies on the broker's persistent session; this feature
+does not use QoS 2 or promise durable client-side MQTT state.
+
+Physical verification:
+
+1. Confirm migrations are applied and the exact site/device registry pair exists.
+   Configure local backend credentials/CA and keep the ESP32 publishing normally.
+2. Start the backend; poll `/status` until `connected`. With application INFO
+   logging enabled, logs show sanitized `stored` or `duplicate` outcomes. Expect a new observation around every 5s.
+3. Check PostgreSQL `optimesh.measurements` for the configured IDs and matching
+   `message_id`, `observed_at`, `power_w`, `energy_wh`, and server `received_at`.
+   Alternatively, query `/sites/{site_id}/measurements` with a valid owner bearer
+   token and timezone-aware `start`/`end` covering the current readings.
+4. Briefly stop/restart the backend using the same client ID. Confirm reconnection,
+   new rows and replay where the broker retains messages; repeated message IDs
+   must leave exactly one row. Stop with Ctrl+C and confirm the worker exits.
+
+Never publish malformed/replayed test data using the real device identity. Use an
+isolated test broker/database for destructive or failure-injection tests.
 
 ## Checks
 
