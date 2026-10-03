@@ -5,23 +5,24 @@ import { DeviceList } from "./device-list";
 import { ModeNotice } from "./mode-notice";
 import { ModeSwitch } from "./mode-switch";
 
-const radios = (html: string) => html.match(/<button[^>]*role="radio"[^>]*>[^<]*<\/button>/g) ?? [];
+const toggles = (html: string) => html.match(/<button[^>]*aria-pressed[^>]*>[^<]*<\/button>/g) ?? [];
 
 describe("ModeSwitch", () => {
   it("offers Monitor, Assist and a disabled Autopilot that points to the simulator", () => {
     const html = renderToStaticMarkup(<ModeSwitch mode="monitor" onSelect={() => undefined} />);
-    const [monitor, assist, autopilot] = radios(html);
-    expect(radios(html)).toHaveLength(3);
-    expect(monitor).toMatch(/aria-checked="true"[^>]*>Наблюдение</);
-    expect(assist).toMatch(/aria-checked="false"[^>]*>Асистент</);
+    const [monitor, assist, autopilot] = toggles(html);
+    expect(html).toContain('role="group" aria-label="Режим на управление"');
+    expect(toggles(html)).toHaveLength(3);
+    expect(monitor).toMatch(/aria-pressed="true"[^>]*>Наблюдение</);
+    expect(assist).toMatch(/aria-pressed="false"[^>]*>Асистент</);
     expect(autopilot).toMatch(/disabled=""[^>]*>Автопилот</);
     expect(monitor).not.toContain("disabled");
     expect(html).toContain('Автопилотът работи само в <a href="/simulator">симулатора</a>.');
   });
 
   it("marks Assist when it is the mode", () => {
-    const [, assist] = radios(renderToStaticMarkup(<ModeSwitch mode="assist" onSelect={() => undefined} />));
-    expect(assist).toContain('aria-checked="true"');
+    const [, assist] = toggles(renderToStaticMarkup(<ModeSwitch mode="assist" onSelect={() => undefined} />));
+    expect(assist).toContain('aria-pressed="true"');
   });
 });
 

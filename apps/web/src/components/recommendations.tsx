@@ -77,11 +77,15 @@ function RecommendationRow({
             спестява около <strong>{formatMoney(recommendation.saving_per_hour, recommendation.currency)}</strong> на час
           </span>
         </p>
-        {status && (
-          <p className="command-note" data-tone={status.tone} aria-live="polite" data-status={command?.status ?? "error"}>
-            {status.text}
-          </p>
-        )}
+        {/* Mounted while still empty: screen readers skip a live region that appears already filled. */}
+        <p
+          className="command-note"
+          aria-live="polite"
+          data-tone={status?.tone}
+          data-status={status ? (command?.status ?? "error") : undefined}
+        >
+          {status?.text}
+        </p>
         {override && (
           <p className="command-note" data-tone="busy" data-override="true">
             По-късно устройството е променено ръчно.

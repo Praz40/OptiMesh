@@ -15,15 +15,15 @@ export function ModeSwitch({ mode, onSelect }: { mode: SiteMode; onSelect: (mode
   const noteId = useId();
   return (
     <div className="mode">
-      <div className="mode-switch" role="radiogroup" aria-label="Режим на управление">
+      {/* Toggle buttons rather than radios: a radiogroup would need roving focus and arrow keys. */}
+      <div className="mode-switch" role="group" aria-label="Режим на управление">
         {MODES.map((item) => {
           const autopilot = item.mode === "autopilot";
           return (
             <button
               key={item.mode}
               type="button"
-              role="radio"
-              aria-checked={mode === item.mode}
+              aria-pressed={mode === item.mode}
               disabled={autopilot}
               aria-describedby={autopilot ? noteId : undefined}
               title={item.hint}

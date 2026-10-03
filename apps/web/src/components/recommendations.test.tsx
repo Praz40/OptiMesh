@@ -63,6 +63,8 @@ describe("RecommendationList", () => {
     expect(ev).toContain("Команда към „EV charger“: <strong>лимит 4,9 kW</strong>");
     expect(ev).toContain(`спестява около <strong>0,39${NBSP}€</strong> на час`);
     expect(buttonOf(ev)).toMatch(/^<button type="button" class="button-primary button-small">Приложи<\/button>$/);
+    // The live region is there, empty, before the first status, so that status is announced.
+    expect(ev).toContain('<p class="command-note" aria-live="polite"></p>');
   });
 
   it("disables Приложи for an offline device and says why", () => {
