@@ -30,7 +30,8 @@ def decode_cursor(value: str, query: HistoryQuery, site_id: UUID, user_id: UUID)
 
 
 def read_history(
-    session: Session, principal: Principal, site_id: UUID, query: HistoryQuery) -> HistoryPage:
+    session: Session, principal: Principal, site_id: UUID, query: HistoryQuery
+) -> HistoryPage:
     statement = (
         select(Measurement)
         .join(Site, Measurement.site_id == Site.id)
