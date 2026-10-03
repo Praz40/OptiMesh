@@ -175,6 +175,29 @@ def test_costs_fall_back_to_power_after_a_counter_reset(env: Fixture) -> None:
     assert hour["import_wh"] == pytest.approx(1200)  # not max - min = 5600
 
 
+def test_costs_fall_back_to_power_when_the_counter_restarts_from_its_minimum(
+    env: Fixture,
+) -> None:
+    # The first reading is the minimum and the last the maximum, yet the counter dropped.
+    for at, energy in (
+        (local(9), 0),
+        (local(9, 20), 100),
+        (local(9, 20, 2), 0),  # device restarted
+        (local(9, 59, 58), 200),
+    ):
+        env.post(env.meter_id, at, power_w=600, energy_wh=energy)
+    (hour,) = env.get("costs")["intervals"]
+    assert hour["import_wh"] == pytest.approx(600)  # not last - first = 200
+
+
+def test_costs_use_the_counter_when_readings_without_one_sit_between(env: Fixture) -> None:
+    env.post(env.meter_id, local(9), power_w=900, energy_wh=1000)
+    env.post(env.meter_id, local(9, 30), power_w=900)  # no counter in this reading
+    env.post(env.meter_id, local(9, 59, 58), power_w=900, energy_wh=1800)
+    (hour,) = env.get("costs")["intervals"]
+    assert hour["import_wh"] == pytest.approx(800)
+
+
 def test_costs_keep_the_two_repeated_hours_apart_when_summer_time_ends(env: Fixture) -> None:
     env.now = local(5, day=25)  # 2026-10-25: 04:00 summer time becomes 03:00 winter time
     env.post(env.meter_id, datetime(2026, 10, 25, 0, 10, tzinfo=UTC), power_w=1000)  # 03:10+03

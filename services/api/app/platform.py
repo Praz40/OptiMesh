@@ -239,45 +239,66 @@ class Platform:
         local_hour = func.date_trunc("hour", local_time)
         # Seconds east of UTC: tells the two 03:00 hours apart when summer time ends.
         utc_offset = extract("epoch", local_time - func.timezone("UTC", Measurement.observed_at))
-        power = func.coalesce(Measurement.power_w, 0.0)
-        energy_by_time = func.array_agg(
-            aggregate_order_by(Measurement.energy_wh, Measurement.observed_at), type_=ARRAY(Float)
-        ).filter(Measurement.energy_wh.is_not(None))
-        energy_backwards = func.array_agg(
-            aggregate_order_by(Measurement.energy_wh, Measurement.observed_at.desc()),
-            type_=ARRAY(Float),
-        ).filter(Measurement.energy_wh.is_not(None))
+        # Previous counter value in the same hour, skipping readings without one.
+        previous_energy = func.lag(Measurement.energy_wh).over(
+            partition_by=(
+                Measurement.device_id,
+                local_hour,
+                utc_offset,
+                Measurement.energy_wh.is_(None),
+            ),
+            order_by=Measurement.observed_at,
+        )
+        readings = (
+            select(
+                Measurement.device_id,
+                Measurement.observed_at,
+                Measurement.power_w,
+                Measurement.energy_wh,
+                local_hour.label("local_hour"),
+                utc_offset.label("utc_offset"),
+                previous_energy.label("previous_energy_wh"),
+            )
+            .where(
+                Measurement.site_id == site_id,
+                Measurement.device_id.in_(device_ids),
+                Measurement.observed_at >= since,
+            )
+            .subquery()
+        )
+        r = readings.c
+        power = func.coalesce(r.power_w, 0.0)
+        has_energy = r.energy_wh.is_not(None)
+        first_energy = func.array_agg(
+            aggregate_order_by(r.energy_wh, r.observed_at), type_=ARRAY(Float)
+        ).filter(has_energy)[1]
+        last_energy = func.array_agg(
+            aggregate_order_by(r.energy_wh, r.observed_at.desc()), type_=ARRAY(Float)
+        ).filter(has_energy)[1]
+        counter_reset = func.coalesce(func.bool_or(r.energy_wh < r.previous_energy_wh), False)
         with self._session() as session:
             rows: Any = session.execute(
                 select(
-                    Measurement.device_id,
-                    local_hour,
-                    utc_offset,
-                    func.min(Measurement.energy_wh),
-                    func.max(Measurement.energy_wh),
-                    energy_by_time[1],
-                    energy_backwards[1],
+                    r.device_id,
+                    r.local_hour,
+                    r.utc_offset,
+                    first_energy,
+                    last_energy,
+                    counter_reset,
                     func.avg(func.greatest(power, 0.0)),
                     func.avg(func.greatest(-power, 0.0)),
-                    func.min(Measurement.observed_at),
-                    func.max(Measurement.observed_at),
-                )
-                .where(
-                    Measurement.site_id == site_id,
-                    Measurement.device_id.in_(device_ids),
-                    Measurement.observed_at >= since,
-                )
-                .group_by(Measurement.device_id, local_hour, utc_offset)
+                    func.min(r.observed_at),
+                    func.max(r.observed_at),
+                ).group_by(r.device_id, r.local_hour, r.utc_offset)
             ).all()
         zone = site_zone(timezone)
         return [
             MeterHour(
                 device_id=device_id,
                 hour=(hour - timedelta(seconds=float(offset))).replace(tzinfo=UTC).astimezone(zone),
-                min_energy_wh=min_energy,
-                max_energy_wh=max_energy,
                 first_energy_wh=first_energy,
                 last_energy_wh=last_energy,
+                counter_reset=bool(reset),
                 avg_import_w=float(avg_import or 0.0),
                 avg_export_w=float(avg_export or 0.0),
                 first=first,
@@ -287,10 +308,9 @@ class Platform:
                 device_id,
                 hour,
                 offset,
-                min_energy,
-                max_energy,
                 first_energy,
                 last_energy,
+                reset,
                 avg_import,
                 avg_export,
                 first,

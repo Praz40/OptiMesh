@@ -24,10 +24,9 @@ class MeterHour:
 
     device_id: UUID
     hour: datetime  # start of the local hour, timezone-aware (fold set when summer time ends)
-    min_energy_wh: float | None
-    max_energy_wh: float | None
     first_energy_wh: float | None  # counter at the hour's first reading that has one
     last_energy_wh: float | None  # ... and at its last
+    counter_reset: bool  # the counter went down between two readings in the hour
     avg_import_w: float  # mean of max(power, 0)
     avg_export_w: float  # mean of max(-power, 0)
     first: datetime
@@ -38,13 +37,11 @@ def hour_energy(row: MeterHour) -> tuple[float, float]:
     """(import_wh, export_wh) for one meter-hour."""
     covered_h = min((row.last - row.first + SAMPLE_PERIOD).total_seconds(), 3600) / 3600
     by_power = row.avg_import_w * covered_h
-    # The counter resets when the device restarts (docs/contracts.md). A counter that
-    # only rose starts at its minimum and ends at its maximum; anything else means a
-    # reset inside the hour, and max - min would count the energy before it again.
+    # The counter resets when the device restarts (docs/contracts.md); across a reset,
+    # last - first is meaningless, so the hour falls back to average power.
     first, last = row.first_energy_wh, row.last_energy_wh
-    if first is not None and last is not None:
-        rose = first == row.min_energy_wh and last == row.max_energy_wh
-        import_wh = last - first if rose else by_power
+    if first is not None and last is not None and not row.counter_reset:
+        import_wh = last - first
     else:
         import_wh = by_power
     return import_wh, row.avg_export_w * covered_h
@@ -90,20 +87,21 @@ def build_costs(
     cost = import_cost - export_revenue
 
     # Rest of today from the forecast: net load at the meter, battery ignored.
+    # All in UTC: two times in the same zone compare and subtract as wall-clock times, so
+    # 03:30 summer time would count as after 03:00 winter time when summer time ends.
     projected = None
-    day_end = day_start + timedelta(days=1)
+    now_utc = now.astimezone(UTC)
+    day_end = (day_start + timedelta(days=1)).astimezone(UTC)  # next local midnight
     if has_meter and forecast is not None:
         projected = cost
         for interval in forecast.intervals:
-            if interval.start >= day_end or interval.end <= now:
+            start, end = interval.start.astimezone(UTC), interval.end.astimezone(UTC)
+            if start >= day_end or end <= now_utc:
                 continue
             if interval.load_w is None:
                 projected = None
                 break
-            # In UTC: two times in the same zone subtract as wall-clock times, which gives 0 h
-            # for the repeated hour when summer time ends.
-            begin = max(interval.start, now).astimezone(UTC)
-            share = (interval.end.astimezone(UTC) - begin).total_seconds() / 3600
+            share = (end - max(start, now_utc)).total_seconds() / 3600
             net_wh = (interval.load_w - (interval.solar_w or 0.0)) * share
             price = interval.import_price if net_wh > 0 else interval.export_price
             projected += net_wh / 1000 * price

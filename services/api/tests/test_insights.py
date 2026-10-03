@@ -207,23 +207,23 @@ def test_tariff_text_is_bulgarian_and_admits_it_is_invented() -> None:
 
 def meter_hour(
     *,
-    energy: tuple[float, float, float, float] | None = None,
+    energy: tuple[float, float] | None = None,
+    reset: bool = False,
     import_w: float = 0.0,
     export_w: float = 0.0,
     minutes: int = 60,
     hour: datetime | None = None,
     device_id: UUID | None = None,
 ) -> MeterHour:
-    """`energy` = (first, min, max, last) counter values in the hour."""
+    """`energy` = (first, last) counter values in the hour."""
     begin = hour or local(10)
-    first, low, high, last = energy if energy is not None else (None, None, None, None)
+    first, last = energy if energy is not None else (None, None)
     return MeterHour(
         device_id=device_id or uuid4(),
         hour=begin,
-        min_energy_wh=low,
-        max_energy_wh=high,
         first_energy_wh=first,
         last_energy_wh=last,
+        counter_reset=reset,
         avg_import_w=import_w,
         avg_export_w=export_w,
         first=begin,
@@ -232,13 +232,13 @@ def meter_hour(
 
 
 def test_hour_energy_uses_the_counter_when_it_only_rose() -> None:
-    row = meter_hour(energy=(1000, 1000, 1600, 1600), import_w=5000)
+    row = meter_hour(energy=(1000, 1600), import_w=5000)
     assert hour_energy(row) == (600, 0)
 
 
 def test_hour_energy_falls_back_to_power_after_a_counter_reset() -> None:
-    # 5000 -> 5400, device restarts, 0 -> 200: max - min would claim 5400 Wh.
-    row = meter_hour(energy=(5000, 0, 5400, 200), import_w=1200)
+    # 0 -> 100, device restarts, 0 -> 200: last - first would claim 200 Wh.
+    row = meter_hour(energy=(0, 200), reset=True, import_w=1200)
     assert hour_energy(row) == (1200, 0)
 
 
@@ -270,8 +270,8 @@ def costs_for(
 def test_costs_price_imported_and_exported_energy_per_hour() -> None:
     meter = uuid4()
     rows = [
-        meter_hour(device_id=meter, hour=local(10), energy=(0, 0, 2000, 2000), import_w=2000),
-        meter_hour(device_id=meter, hour=local(12), energy=(2000, 2000, 2000, 2000), export_w=3000),
+        meter_hour(device_id=meter, hour=local(10), energy=(0, 2000), import_w=2000),
+        meter_hour(device_id=meter, hour=local(12), energy=(2000, 2000), export_w=3000),
     ]
     costs = costs_for(rows, local(12, 59))
     assert [(i.start, i.import_wh, i.export_wh) for i in costs.intervals] == [
@@ -291,8 +291,8 @@ def test_costs_price_imported_and_exported_energy_per_hour() -> None:
 
 def test_costs_add_up_several_meters_in_the_same_hour() -> None:
     rows = [
-        meter_hour(energy=(0, 0, 1000, 1000)),
-        meter_hour(energy=(50, 50, 550, 550)),
+        meter_hour(energy=(0, 1000)),
+        meter_hour(energy=(50, 550)),
     ]
     costs = costs_for(rows, local(11))
     assert [i.import_wh for i in costs.intervals] == [1500]
@@ -304,8 +304,8 @@ def test_costs_keep_the_two_repeated_hours_apart_when_summer_time_ends() -> None
     winter = (summer.astimezone(UTC) + timedelta(hours=1)).astimezone(SOFIA)  # 03:00+02:00
     meter = uuid4()
     rows = [
-        meter_hour(device_id=meter, hour=winter, energy=(10, 10, 510, 510)),
-        meter_hour(device_id=meter, hour=summer, energy=(0, 0, 10, 10)),
+        meter_hour(device_id=meter, hour=winter, energy=(10, 510)),
+        meter_hour(device_id=meter, hour=summer, energy=(0, 10)),
     ]
     costs = costs_for(rows, local(5, day=day))
     starts = [i.start.astimezone(UTC) for i in costs.intervals]
@@ -345,7 +345,7 @@ def forecast_of(now: datetime, *hours: tuple[float | None, float | None]) -> For
 
 def test_projected_day_adds_the_forecast_net_load_for_the_rest_of_today() -> None:
     now = local(21, 30)
-    rows = [meter_hour(hour=local(10), energy=(0, 0, 1000, 1000))]  # 0.19 so far
+    rows = [meter_hour(hour=local(10), energy=(0, 1000))]  # 0.19 so far
     forecast = forecast_of(
         now,
         (1000, 3000),  # 21:30-22:00: exports 1000 Wh at 0.06
@@ -379,6 +379,15 @@ def test_projected_day_counts_the_repeated_hour_when_summer_time_ends() -> None:
     forecast = build_forecast(site(consumption_w=1000), [], FLAT, now, {})
     costs = costs_for([], now, tariff=FLAT, forecast=forecast)
     assert costs.projected_day_cost == pytest.approx(24 * 1.0 * 0.2)
+
+
+def test_projected_day_compares_instants_in_the_first_repeated_hour() -> None:
+    # 03:30 summer time (00:30Z) is before 03:00 winter time (01:00Z), though the wall
+    # clock says otherwise: the next hour counts in full, this one for half an hour.
+    now = local(3, 30, day=date(2026, 10, 25))
+    forecast = forecast_of(now, (1000, None), (3000, None))  # 00:00Z and 01:00Z, both 0.11
+    costs = costs_for([], now, forecast=forecast)
+    assert costs.projected_day_cost == pytest.approx((0.5 * 1 + 1 * 3) * 0.11)
 
 
 # --- build_forecast --------------------------------------------------------------
@@ -608,8 +617,8 @@ def test_scenario_flat_tariff() -> None:
     forecast = build_forecast(site(consumption_w=3000), [], FLAT, now, {})
     assert {i.import_price for i in forecast.intervals} == {0.2}
     rows = [
-        meter_hour(hour=local(10), energy=(0, 0, 1000, 1000)),
-        meter_hour(hour=local(17), energy=(1000, 1000, 2000, 2000)),
+        meter_hour(hour=local(10), energy=(0, 1000)),
+        meter_hour(hour=local(17), energy=(1000, 2000)),
     ]
     assert [i.cost for i in costs_for(rows, now, tariff=FLAT).intervals] == [0.2, 0.2]
     # Nothing to shift to: no cheaper hour and never a peak price.
@@ -630,8 +639,8 @@ def test_scenario_variable_tariff() -> None:
     forecast = build_forecast(site(consumption_w=3000), [], DEFAULT_TARIFF, now, {})
     assert {i.import_price for i in forecast.intervals} == {0.11, 0.19, 0.13, 0.21, 0.32, 0.14}
     rows = [
-        meter_hour(hour=local(10), energy=(0, 0, 1000, 1000)),
-        meter_hour(hour=local(17), energy=(1000, 1000, 2000, 2000)),
+        meter_hour(hour=local(10), energy=(0, 1000)),
+        meter_hour(hour=local(17), energy=(1000, 2000)),
     ]
     assert [i.cost for i in costs_for(rows, now).intervals] == [0.19, 0.32]
     ev, item, unit = charger(), boiler(), hvac()
@@ -722,11 +731,11 @@ def demo_site() -> tuple[FakePlatform, DeviceOut, DeviceOut, DeviceOut]:
     )
     hourly = {grid.id: {10: -3000.0, 12: 500.0}, solar.id: {10: 4000.0, 12: 1500.0}}
     rows = [
-        meter_hour(device_id=grid.id, hour=local(9), energy=(10000, 10000, 11000, 11000)),
+        meter_hour(device_id=grid.id, hour=local(9), energy=(10000, 11000)),
         meter_hour(
             device_id=grid.id,
             hour=local(10),
-            energy=(11000, 11000, 11000, 11000),
+            energy=(11000, 11000),
             export_w=3000,
             minutes=30,
         ),
