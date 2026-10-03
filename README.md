@@ -15,7 +15,7 @@ OptiMesh свързва устройствата на един обект чре
 The demo has three acts.
 
 **1. Connect.** Devices (an ESP32 or the device simulator) send telemetry over MQTT in one shared contract, and the dashboard shows every site live over a WebSocket.
-Switch the site to „Асистент“ mode (every site opens in „Наблюдение“, which is read-only), flip a switch on the dashboard and the command travels back to the device; the log says „Приложено“ only after the device acknowledges it.
+Switch the site to „Асистент“ mode (by default every site opens in „Наблюдение“, which is read-only), flip a switch on the dashboard and the command travels back to the device; the log says „Приложено“ only after the device acknowledges it.
 
 ![Workshop in „Асистент“ mode: the Compressor commands are „Приложено“ in the activity log](docs/images/connect.png)
 
@@ -191,7 +191,7 @@ npm run dev
 
 On Windows, keep `--reload` on the API command: without it uvicorn uses the Proactor event loop, which the MQTT client cannot run on.
 
-Open http://localhost:3000, pick a site, choose „Асистент“ in its header (every site opens in „Наблюдение“, which is read-only, and the choice is remembered per site in the browser) and flip a switch. The command log shows „Приложено“ only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
+Open http://localhost:3000, pick a site, choose „Асистент“ in its header (by default every site opens in „Наблюдение“, which is read-only; the choice is remembered per site in the browser) and flip a switch. The command log shows „Приложено“ only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
 To connect the real ESP32 through the Raspberry Pi broker over TLS, see [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md). For Supabase, the Compose API container and migration notes, see [docs/database.md](docs/database.md).
 
