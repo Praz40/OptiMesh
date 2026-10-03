@@ -12,8 +12,19 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
+from app import insights
+from app.live import utc_now
 from app.platform import DatabaseUnavailable, InvalidRequest, NotFound, Platform
-from app.schemas import CommandOut, CommandRequest, SiteOut, SiteSnapshot, Telemetry
+from app.schemas import (
+    CommandOut,
+    CommandRequest,
+    CostsOut,
+    ForecastOut,
+    Recommendation,
+    SiteOut,
+    SiteSnapshot,
+    Telemetry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +61,33 @@ def list_sites(request: Request) -> list[SiteOut]:
 def get_site(request: Request, site_id: UUID) -> SiteSnapshot:
     try:
         return _platform(request).snapshot(site_id)
+    except (DatabaseUnavailable, NotFound) as error:
+        raise _http_error(error) from None
+
+
+@router.get("/sites/{site_id}/forecast")
+def get_forecast(request: Request, site_id: UUID) -> ForecastOut:
+    """Expected solar, load and prices for the next 24 hours. Expectations, not measurements."""
+    try:
+        return insights.forecast(_platform(request), site_id, utc_now())
+    except (DatabaseUnavailable, NotFound) as error:
+        raise _http_error(error) from None
+
+
+@router.get("/sites/{site_id}/costs")
+def get_costs(request: Request, site_id: UUID) -> CostsOut:
+    """Today's energy cost at the grid meter, local day, from interval energy."""
+    try:
+        return insights.costs(_platform(request), site_id, utc_now())
+    except (DatabaseUnavailable, NotFound) as error:
+        raise _http_error(error) from None
+
+
+@router.get("/sites/{site_id}/recommendations")
+def get_recommendations(request: Request, site_id: UUID) -> list[Recommendation]:
+    """Up to five proposed commands. Nothing is sent: Assist applies one via /commands."""
+    try:
+        return insights.recommendations(_platform(request), site_id, utc_now())
     except (DatabaseUnavailable, NotFound) as error:
         raise _http_error(error) from None
 

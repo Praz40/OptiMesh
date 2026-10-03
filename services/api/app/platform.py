@@ -7,12 +7,12 @@ device is physical or simulated.
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, func, select, text, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import Engine, Float, extract, func, select, text, update
+from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by, insert
 from sqlalchemy.orm import Session
 
 from app.costs import MeterHour
@@ -235,40 +235,87 @@ class Platform:
         """Readings of the given meters aggregated per local hour since `since`."""
         if not device_ids:
             return []
-        local_hour = func.date_trunc("hour", func.timezone(timezone, Measurement.observed_at))
-        power = func.coalesce(Measurement.power_w, 0.0)
+        local_time = func.timezone(timezone, Measurement.observed_at)
+        local_hour = func.date_trunc("hour", local_time)
+        # Seconds east of UTC: tells the two 03:00 hours apart when summer time ends.
+        utc_offset = extract("epoch", local_time - func.timezone("UTC", Measurement.observed_at))
+        # Previous counter value in the same hour, skipping readings without one.
+        previous_energy = func.lag(Measurement.energy_wh).over(
+            partition_by=(
+                Measurement.device_id,
+                local_hour,
+                utc_offset,
+                Measurement.energy_wh.is_(None),
+            ),
+            order_by=Measurement.observed_at,
+        )
+        readings = (
+            select(
+                Measurement.device_id,
+                Measurement.observed_at,
+                Measurement.power_w,
+                Measurement.energy_wh,
+                local_hour.label("local_hour"),
+                utc_offset.label("utc_offset"),
+                previous_energy.label("previous_energy_wh"),
+            )
+            .where(
+                Measurement.site_id == site_id,
+                Measurement.device_id.in_(device_ids),
+                Measurement.observed_at >= since,
+            )
+            .subquery()
+        )
+        r = readings.c
+        power = func.coalesce(r.power_w, 0.0)
+        has_energy = r.energy_wh.is_not(None)
+        first_energy = func.array_agg(
+            aggregate_order_by(r.energy_wh, r.observed_at), type_=ARRAY(Float)
+        ).filter(has_energy)[1]
+        last_energy = func.array_agg(
+            aggregate_order_by(r.energy_wh, r.observed_at.desc()), type_=ARRAY(Float)
+        ).filter(has_energy)[1]
+        counter_reset = func.coalesce(func.bool_or(r.energy_wh < r.previous_energy_wh), False)
         with self._session() as session:
             rows: Any = session.execute(
                 select(
-                    Measurement.device_id,
-                    local_hour,
-                    func.min(Measurement.energy_wh),
-                    func.max(Measurement.energy_wh),
+                    r.device_id,
+                    r.local_hour,
+                    r.utc_offset,
+                    first_energy,
+                    last_energy,
+                    counter_reset,
                     func.avg(func.greatest(power, 0.0)),
                     func.avg(func.greatest(-power, 0.0)),
-                    func.min(Measurement.observed_at),
-                    func.max(Measurement.observed_at),
-                )
-                .where(
-                    Measurement.site_id == site_id,
-                    Measurement.device_id.in_(device_ids),
-                    Measurement.observed_at >= since,
-                )
-                .group_by(Measurement.device_id, local_hour)
+                    func.min(r.observed_at),
+                    func.max(r.observed_at),
+                ).group_by(r.device_id, r.local_hour, r.utc_offset)
             ).all()
         zone = site_zone(timezone)
         return [
             MeterHour(
                 device_id=device_id,
-                hour=hour.replace(tzinfo=zone),
-                min_energy_wh=min_energy,
-                max_energy_wh=max_energy,
+                hour=(hour - timedelta(seconds=float(offset))).replace(tzinfo=UTC).astimezone(zone),
+                first_energy_wh=first_energy,
+                last_energy_wh=last_energy,
+                counter_reset=bool(reset),
                 avg_import_w=float(avg_import or 0.0),
                 avg_export_w=float(avg_export or 0.0),
                 first=first,
                 last=last,
             )
-            for device_id, hour, min_energy, max_energy, avg_import, avg_export, first, last in rows
+            for (
+                device_id,
+                hour,
+                offset,
+                first_energy,
+                last_energy,
+                reset,
+                avg_import,
+                avg_export,
+                first,
+                last,
+            ) in rows
         ]
 
     # --- telemetry ----------------------------------------------------------------
