@@ -156,7 +156,7 @@ TLS is enabled by default; these variables configure the real broker:
 | `DATABASE_URL` | Existing backend PostgreSQL connection URI |
 | `MQTT_HOST` | `192.168.0.23` for the verified Raspberry Pi broker |
 | `MQTT_PORT` | `8883` (default) |
-| `MQTT_CA_CERT` | Absolute path to the trusted public CA certificate, outside Git |
+| `MQTT_CA_FILE` | Absolute path to the trusted public CA certificate, outside Git (`MQTT_CA_CERT` is the legacy alias) |
 | `MQTT_USERNAME` | Separate backend subscriber identity |
 | `MQTT_PASSWORD` | Its password, only in local environment/configuration |
 | `MQTT_CLIENT_ID` | Stable, unique backend ID, e.g. `optimesh-backend-demo` |
