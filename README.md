@@ -81,6 +81,7 @@ Steps 1–4 carry measurements to the dashboard; steps 5–10 carry a command ba
 - **Device simulator** (`python -m app.simulator`): virtual devices for the demo sites, speaking the same MQTT contract as hardware; `--include-hardware` also stands in for the ESP32.
 - **ESP32 firmware** (`firmware/esp32-telemetry`): publishes telemetry over TLS to the Raspberry Pi broker (reported in PR #22; CI does not build the firmware). See its [README](firmware/esp32-telemetry/README.md).
 - **Authenticated provisioning and history** (`/sites`): Supabase bearer-token verification, site and device provisioning and paginated UTC history, owner-scoped. See [docs/sites-api.md](docs/sites-api.md).
+- **Sign-in and device onboarding in the dashboard** (optional): email and password with Supabase Auth, „Моите обекти“ (your own sites, „Нов обект“), „Добави устройство“ and, per device, „Свързване“ (site and device IDs, MQTT topics, a telemetry example that matches the contract, the ESP32 `SITE_ID`/`DEVICE_ID` lines). Needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `apps/web/.env.local`; without them these screens are hidden.
 - **Database**: one Alembic chain `0001 → 0002 → 0003`; CI runs the migration round trip against PostgreSQL 17. Demo seed: Home, Workshop (where the physical ESP32 lives) and Office, with fixed UUIDs. See [docs/database.md](docs/database.md).
 
 **Not built yet**: authentication on `/api/v1`, Autopilot on real devices, ESP32 commands and deployment. Details are under [Limitations](#limitations).
@@ -271,6 +272,7 @@ Branch `feature/<slug>` from `develop`, one issue per branch, and open a PR into
 ## Limitations
 
 - **No authentication on `/api/v1`, the WebSocket or commands** (issue #3): any client that reaches the API can read every site and send commands. Keep the API on localhost or a trusted LAN. Only the `/sites` routes verify a Supabase token.
+- **Signing in does not hide other users' sites yet** (issue #3): „Портфолио“, the sidebar's site list and `/api/v1` still show every site to everyone, signed in or not. Only „Моите обекти“ and the `/sites` routes are per user.
 - Monitor and Assist (#10) are a dashboard setting kept in the browser: „Наблюдение“ blocks commands in the dashboard only, and the API accepts commands from any client until #3 adds authentication.
 - Autopilot runs only in the two simulations; it does not control real devices. `/recommendations` proposes commands and sends nothing.
 - The scenario simulator (`app/sim`) has no API or screen. The `/simulator` game uses its own TypeScript simulation with a rule-based Autopilot.

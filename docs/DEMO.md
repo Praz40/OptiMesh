@@ -9,7 +9,7 @@
 ### Машината
 
 - Node.js 24 LTS, [uv](https://docs.astral.sh/uv/getting-started/installation/) (сам сваля Python 3.12) и Docker Desktop. Ако няма Docker, вижте [приложение А](#приложение-а-без-docker).
-- Докато има интернет, свалете зависимостите. После демото не иска интернет: таблото вика само `localhost:3000` и `localhost:8000` (проверено на всички седем страници).
+- Докато има интернет, свалете зависимостите. После демото не иска интернет: таблото вика само `localhost:3000` и `localhost:8000` (проверено на всички седем страници). Изключение е входът (Supabase), вижте „Свой обект и устройство“ в раздел 3.
 
   ```powershell
   npm ci                                  # корен на репото
@@ -33,6 +33,15 @@ Copy-Item .env.example .env             # само ако още няма .env
 - `DATABASE_URL` сочи локалния PostgreSQL на `127.0.0.1:5432`, а `CORS_ORIGINS` съдържа `http://localhost:3000`.
 - Оставете `MIGRATION_DATABASE_URL` празен или го насочете към същата база като `DATABASE_URL`. Alembic го предпочита пред `DATABASE_URL`, а `app.seed` пише в `DATABASE_URL`. Ако двата сочат различни бази, reset-ът (раздел 5) изтрива таблиците на другата база, например на Supabase.
 - Не попълвайте `MQTT_CA_FILE`, `MQTT_USERNAME` и `MQTT_PASSWORD`. Те са за брокера на Raspberry Pi ([raspberry-pi-mqtt.md](raspberry-pi-mqtt.md)).
+
+### Вход (по желание): `apps/web/.env.local`
+
+„Вход“, „Моите обекти“ и свързването на устройства се показват само ако в `apps/web/.env.local` има и двете стойности по-долу. Без тях тези екрани са скрити и таблото е точно както досега. Това е и резервният вариант, ако на сцената няма интернет.
+
+- `apps/web/.env.local`: `NEXT_PUBLIC_SUPABASE_URL` (адресът на проекта, `https://….supabase.co`) и `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (публичният ключ `sb_publishable_…`). И двете са публични по замисъл. Никога не слагайте тук service-role или secret ключ.
+- `services/api/.env`: `SUPABASE_URL`, същият адрес. Без него „Моите обекти“ казва, че API не може да провери входа.
+- В Supabase входът с имейл трябва да е включен, а ключовете за JWT да са ES256 или RS256 (Project Settings → JWT Keys). Със стария HS256 секрет API отговаря 401. В проекта на отбора „Confirm email“ е изключен, затова новият профил влиза веднага.
+- След промяна на `.env.local` рестартирайте `npm run dev`.
 
 ### Свободни портове
 
@@ -151,9 +160,36 @@ uv run --frozen python -m app.sim.scenario_office
 
 **Изречение:** „Същият ден и същите коли: Автопилотът зарежда и десетте навреме и държи пика на 22 kW, а простите правила оставят 3 коли незаредени.“
 
+### По желание: свой обект и устройство
+
+Само с интернет и с двете стойности от раздел 1 („Вход“). Показва пътя, за който пита журито: потребител → обекти → устройства → шлюз → табло.
+
+**Щраквате:**
+
+1. „Вход“ долу в менюто → „Регистрация“ (имейл и парола), или „Вход“ с вече създаден профил.
+2. „Моите обекти“ в менюто → „Нов обект“: име, часова зона `Europe/Sofia`, валута `EUR` → „Създай обекта“.
+3. „Устройства и свързване“ при новия обект → „Добави устройство“: име, вид „Смарт контакт“, източник „Симулатор“. Възможностите се отмятат сами според вида → „Добави устройството“.
+4. Отваря се „Свързване“: ID на обекта и на устройството, трите MQTT теми, примерна телеметрия и редовете `SITE_ID` и `DEVICE_ID` за ESP32, всяко с „Копирай“.
+5. „Табло на живо“: устройството вече е там, „не на линия“.
+6. Устройството изпраща данни, по един от двата начина:
+   - Рестартирайте терминал 3 (симулатора). Той зарежда устройствата при старт и започва да праща и за новото.
+   - Еднократно: в „Свързване“ натиснете „Копирай“ под примерната телеметрия, после в PowerShell:
+
+     ```powershell
+     Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/v1/telemetry -ContentType "application/json" -Body (Get-Clipboard -Raw)   # [не е пускано] с клипборда; същото тяло е пратено директно
+     ```
+
+     Отговорът е `stored : True` и устройството става „на линия“. След 15 s без нови данни пак е „не на линия“. За второ съобщение натиснете „Нов пример“: със същия `message_id` API го приема за повторение (`stored : False`).
+
+**Изречение:** „Всеки потребител създава свои обекти и устройства. Устройството се свързва с шлюза по MQTT със своите два ID, а таблото го показва от базата.“
+
+Какво се поддържа днес: ESP32 по Wi-Fi и симулаторът на устройства, и двата по MQTT през шлюза. Zigbee, Bluetooth и готовите смарт контакти искат адаптери в шлюза, които още не са направени (issue #18). „Портфолио“ и `/api/v1` още показват всички обекти на всички (issue #3); входът само добавя „Моите обекти“.
+
 ## 4. Ако нещо се обърка
 
 **Няма интернет.** Не пречи, всичко върви на localhost. Интернет е нужен само за `npm ci`, `uv sync`, `docker compose pull` и (без Docker) `micromamba create`. Пуснете ги предната вечер.
+
+Изключение е входът: Supabase е в интернет, а API проверява всеки вход с ключовете на Supabase. Без интернет „Вход“ казва „Няма връзка със Supabase. Входът изисква интернет.“, а „Моите обекти“ не се зареждат. Пропуснете „Свой обект и устройство“; трите действия не зависят от входа. Ако искате менюто да е точно както преди, махнете двете `NEXT_PUBLIC_SUPABASE_…` от `apps/web/.env.local` и рестартирайте `npm run dev`.
 
 **Платката мълчи.** В Workshop „ESP32 demo load“ е с червена точка, точката на Workshop в менюто е жълта, а „В момента“ казва „1 устройство не изпраща данни“. Не чакайте. Спрете терминал 3 и го пуснете отново със заместител на платката:
 
@@ -226,14 +262,19 @@ npm run dev
 
 ## Приложение А: без Docker
 
-Така е пуснато на 03.10, на Windows без администраторски права. PostgreSQL 17 и Mosquitto 2 идват от conda-forge с [micromamba](https://github.com/mamba-org/micromamba-releases/releases) (`micromamba-win-64.exe`, един файл), със същите потребител, парола, база и портове като `compose.yaml`. Пуснато е с папка в `%TEMP%`; единствената разлика е пътят в `$srv`.
+На лаптопа на Йордан това е инсталирано на 03.10 в `%USERPROFILE%\optimesh-srv`, без администраторски права, и е проверено от нови терминали (таблицата в края). PostgreSQL 17 и Mosquitto 2 идват от conda-forge с [micromamba](https://github.com/mamba-org/micromamba-releases/releases) (един файл), със същите потребител, парола, база и портове като `compose.yaml`. Не слагайте нищо от това в `%TEMP%`: временните папки се чистят.
 
-**Веднъж:**
+`uv` трябва да се намира от нов терминал: `winget install astral-sh.uv` го слага в PATH на потребителя (на този лаптоп: uv 0.12.22).
+
+**Веднъж** (с интернет):
 
 ```powershell
 $srv = "$env:USERPROFILE\optimesh-srv"
+New-Item -ItemType Directory -Force $srv | Out-Null
+Invoke-WebRequest -UseBasicParsing https://github.com/mamba-org/micromamba-releases/releases/download/2.9.0-0/micromamba-win-64.exe -OutFile "$srv\micromamba.exe"
+(Get-FileHash "$srv\micromamba.exe").Hash   # като в micromamba-win-64.sha256 от същото издание
 $env:MAMBA_ROOT_PREFIX = "$srv\mamba"
-micromamba.exe create -y -p "$srv\env" -c conda-forge "postgresql=17" "mosquitto=2"
+& "$srv\micromamba.exe" create -y -p "$srv\env" -c conda-forge "postgresql=17" "mosquitto=2"
 $bin = "$srv\env\Library\bin"
 Set-Content "$srv\pw.txt" "optimesh" -NoNewline          # паролата от compose.yaml
 & "$bin\initdb.exe" -D "$srv\pgdata" -U optimesh --pwfile="$srv\pw.txt" -A scram-sha-256 -E UTF8 --locale=C
@@ -246,6 +287,8 @@ $env:PGPASSWORD = "optimesh"
 ```
 
 Защо `timezone = 'UTC'`: образът `postgres:17` е на UTC. Ако базата е на местно време, API връща времената на командите с `+03:00` вместо в UTC.
+
+`psql` оставя да работи `ccapiserver.exe`, помощна програма за Kerberos от същата папка. Не е нужна; спрете я с `Get-Process ccapiserver -ErrorAction SilentlyContinue | Stop-Process`.
 
 Файлът `$srv\mosquitto.conf` е като `infra/mosquitto/mosquitto.conf`, но слуша само на 127.0.0.1. С Docker това го прави `127.0.0.1:1883` в `compose.yaml`. Иначе анонимният брокер ще е отворен за цялата мрежа.
 
@@ -292,5 +335,8 @@ Reset-ът от раздел 5 работи без промяна.
 | `--include-hardware` | ESP32 на линия до 4 s |
 | Reset (`downgrade base`, `upgrade head`, `seed`) | 0 измервания, 0 команди, 17 устройства |
 | Само `npm run dev`, без база, брокер и API | `/simulator` 200, Автопилотът и резултатите работят; `/` 200 с „Обектите не се заредиха“ |
+| Приложение А в `%USERPROFILE%\optimesh-srv`, всяка стъпка в нов терминал (`develop` `00962ba`) | 5432 и 1883 слушат; `/health`, `/ready` 200; `{"mqtt":"connected"}`; Home 6/6, Office 7/7, Workshop 3/4; `uv` се намира |
+| 04.10, „Свой обект и устройство“ с истински проект в Supabase: регистрация, вход, „Нов обект“, смарт контакт със „Симулатор“ | обектът и устройството са в `/api/v1` веднага, „не на линия“; `POST /api/v1/telemetry` с примера от „Свързване“: 202 `stored: true` и „на линия“; след рестарт на симулатора остава на линия |
+| 04.10, без двете `NEXT_PUBLIC_SUPABASE_…` (`npm run dev` и `next build` + `next start`) | `/sign-in` и `/my-sites` 404; менюто е без „Вход“ и „Моите обекти“; `/` и `/simulator` 200; браузърът не вика Supabase |
 
 В тази проверка процесите са спирани с `taskkill`, а не с Ctrl+C.
