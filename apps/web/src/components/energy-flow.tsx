@@ -1,3 +1,4 @@
+import { BatteryGlyph, BuildingGlyph, EvGlyph, GridGlyph, SolarGlyph } from "@/components/icons";
 import type { SiteSummary } from "@/lib/api";
 import { flowsFor, formatPercent, formatPower, type Flow, type FlowNode } from "@/lib/energy";
 
@@ -16,54 +17,22 @@ const HUB_RADIUS = 9;
 const NODES: Record<FlowNode, NodeSpec> = {
   solar: { x: 320, y: 52, label: "Solar", color: "var(--solar)", labelAt: "right" },
   grid: { x: 88, y: 196, label: "Grid", color: "var(--grid)", labelAt: "below" },
-  home: { x: 552, y: 196, label: "Home & loads", color: "var(--home)", labelAt: "below" },
+  home: { x: 552, y: 196, label: "Site loads", color: "var(--consumption)", labelAt: "below" },
   battery: { x: 196, y: 330, label: "Battery", color: "var(--battery)", labelAt: "below" },
   ev: { x: 444, y: 330, label: "EV charging", color: "var(--ev)", labelAt: "below" },
 };
 
 function Icon({ node, soc }: { node: FlowNode; soc: number | null }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  switch (node) {
-    case "solar":
-      return (
-        <g {...common}>
-          <circle cx="12" cy="12" r="4.5" />
-          {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
-            <line key={angle} x1="12" y1="2.5" x2="12" y2="4.8" transform={`rotate(${angle} 12 12)`} />
-          ))}
-        </g>
-      );
-    case "grid":
-      return (
-        <g {...common}>
-          <path d="M8 22 12 3l4 19M9.2 16h5.6M10.2 11h3.6M5 7h14M7 7l5 4 5-4" />
-        </g>
-      );
-    case "battery": {
-      const level = Math.max(0, Math.min(1, (soc ?? 0) / 100));
-      return (
-        <g {...common}>
-          <rect x="6" y="5" width="12" height="17" rx="2" />
-          <path d="M10 2.5h4" />
-          <rect x="8.2" y={7.2 + 12.6 * (1 - level)} width="7.6" height={12.6 * level} rx="0.8" fill="currentColor" stroke="none" />
-        </g>
-      );
-    }
-    case "ev":
-      return (
-        <g {...common}>
-          <path d="M4 16v-3.5l2.2-5A2 2 0 0 1 8 6.3h8a2 2 0 0 1 1.8 1.2l2.2 5V16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1ZM4 12.5h16" />
-          <circle cx="7.5" cy="17.5" r="1.6" />
-          <circle cx="16.5" cy="17.5" r="1.6" />
-        </g>
-      );
-    case "home":
-      return (
-        <g {...common}>
-          <path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5" />
-        </g>
-      );
-  }
+  return (
+    <g {...common}>
+      {node === "solar" && <SolarGlyph />}
+      {node === "grid" && <GridGlyph />}
+      {node === "battery" && <BatteryGlyph level={soc ?? 0} />}
+      {node === "ev" && <EvGlyph />}
+      {node === "home" && <BuildingGlyph />}
+    </g>
+  );
 }
 
 function caption(node: FlowNode, flow: Flow): string {
@@ -152,7 +121,8 @@ export function EnergyFlow({ summary, present }: { summary: SiteSummary; present
       {order.map((node) => (
         <Branch key={node} node={node} flow={flows[node]} maxWatts={maxWatts} />
       ))}
-      <circle cx={HUB.x} cy={HUB.y} r={HUB_RADIUS} className="flow-hub" />
+      <circle cx={HUB.x} cy={HUB.y} r={HUB_RADIUS + 5} className="flow-hub-ring" />
+      <circle cx={HUB.x} cy={HUB.y} r={HUB_RADIUS - 3} className="flow-hub" />
       {order.map((node) => (
         <NodeView key={node} node={node} flow={flows[node]} soc={summary.battery_soc_pct} />
       ))}
