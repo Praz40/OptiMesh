@@ -342,6 +342,48 @@ details.table-view summary { color: var(--muted); cursor: pointer; width: max-co
 .command-status[data-status="rejected"], .command-status[data-status="expired"], .command-status[data-status="failed"] { color: var(--bad); }
 .command-reason { display: block; color: var(--muted); font-size: 12.5px; }
 
+/* Forms: sign-in, my sites, add device */
+.form { display: grid; gap: 14px; }
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.field { display: grid; gap: 5px; align-content: start; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.field input, .field select { width: 100%; font-weight: 400; }
+.field-hint { font-size: 12.5px; font-weight: 450; color: var(--muted); }
+.field-error { font-size: 12.5px; font-weight: 550; color: var(--bad); }
+:is(input, select, fieldset)[aria-invalid="true"] { border-color: var(--bad); }
+.field-group { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; }
+.field-group legend { padding: 0 4px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.check { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; }
+.check input { width: 16px; height: 16px; padding: 0; accent-color: var(--accent); }
+.form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.auth-panel { display: grid; gap: 16px; max-width: 440px; }
+.auth-panel .mode-switch { justify-self: start; }
+
+/* Account (sidebar) */
+.account { display: grid; gap: 6px; justify-items: start; margin-top: auto; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.account + .sidebar-foot { margin-top: 0; }
+.account-email { font-weight: 600; overflow-wrap: anywhere; }
+
+/* My sites and their devices */
+.owned-list { list-style: none; margin: 0; padding: 0; }
+.owned-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.owned-item:first-child { border-top: 0; padding-top: 0; }
+.owned-item h3 { font-size: 15px; }
+.owned-item h3 a { text-decoration: none; }
+.owned-item h3 a:hover { text-decoration: underline; }
+.owned-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.connect-details { flex-basis: 100%; }
+.connect-details > summary { width: max-content; cursor: pointer; color: var(--accent); font-size: 13.5px; font-weight: 600; }
+.connect { display: grid; gap: 10px; margin-top: 10px; padding: 14px 16px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.connect h4 { margin: 6px 0 0; font-size: 13px; font-weight: 650; }
+.connect dl { display: grid; gap: 8px; margin: 0; }
+.connect dt { font-size: 12.5px; color: var(--muted); }
+.connect dd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 0; min-width: 0; }
+.connect code, .code-block { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12.5px; }
+.connect dd code { overflow-wrap: anywhere; }
+.connect .notice { margin: 0; background: var(--surface); }
+.code-block { margin: 0; padding: 10px 12px; overflow-x: auto; line-height: 1.5; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+
 /* Backend connection check (shown when the API is unreachable) */
 .connection { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
