@@ -387,3 +387,27 @@ def test_installed_paho_network_loop_exits_after_database_failure(subscriber, mo
     assert result == mqtt.MQTT_ERR_NO_CONN
     assert iterations == [True]
     puback.assert_not_called()
+
+
+@pytest.mark.parametrize("offset", [timedelta(hours=-25), timedelta(minutes=6)])
+def test_stale_or_future_telemetry_is_consumed_without_opening_database(
+    subscriber, monkeypatch, offset
+):
+    now = datetime(2026, 10, 3, 12, tzinfo=UTC)
+    monkeypatch.setattr("app.telemetry_ingest._utc_now", lambda: now)
+    segments = subscriber._topic.split("/")
+    data = {
+        "version": 1,
+        "site_id": segments[3],
+        "device_id": segments[5],
+        "message_id": str(uuid4()),
+        "observed_at": (now + offset).isoformat(),
+        "metrics": {"power_w": 1200, "energy_wh": 1.5},
+    }
+    factory = Mock()
+    subscriber._ingestor._session_factory = factory
+    client = fake_client()
+    subscriber._on_message(client, None, message(subscriber, json.dumps(data).encode()))
+    factory.assert_not_called()
+    client.ack.assert_called_once_with(17, 1)
+    client.disconnect.assert_not_called()

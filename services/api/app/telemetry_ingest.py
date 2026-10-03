@@ -1,6 +1,7 @@
 """Validate telemetry and persist it using the existing PostgreSQL schema."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import NamedTuple
 from uuid import UUID
@@ -14,6 +15,12 @@ from app.models import Device, Measurement
 from app.schemas import Telemetry
 
 MAX_PAYLOAD_BYTES = 4096
+MAX_PAST_AGE = timedelta(hours=24)
+MAX_FUTURE_SKEW = timedelta(minutes=5)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class PermanentRejection(ValueError):
@@ -59,6 +66,11 @@ def validate_delivery(topic: str, payload: bytes) -> Telemetry:
         raise PermanentRejection("Invalid telemetry payload") from None
     if (telemetry.site_id, telemetry.device_id) != ids:
         raise PermanentRejection("Topic and payload identifiers differ")
+    # Bounds are inclusive. Compare ages rather than adding/subtracting from
+    # datetimes, so even extreme valid UTC timestamps are rejected safely.
+    age = _utc_now() - telemetry.observed_at
+    if age > MAX_PAST_AGE or age < -MAX_FUTURE_SKEW:
+        raise PermanentRejection("Telemetry timestamp outside accepted freshness window")
     return telemetry
 
 

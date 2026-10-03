@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -17,6 +17,13 @@ from app.telemetry_ingest import (
     parse_telemetry_topic,
     validate_delivery,
 )
+
+NOW = datetime(2026, 10, 3, 9, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def controlled_clock(monkeypatch):
+    monkeypatch.setattr("app.telemetry_ingest._utc_now", lambda: NOW)
 
 
 def reading(site_id=None, device_id=None):
@@ -188,3 +195,56 @@ def test_postgresql_ingestion_duplicates_membership_and_history(
     assert response.status_code == 200
     assert len(response.json()["items"]) == 1
     assert response.json()["items"][0]["message_id"] == data["message_id"]
+
+
+@pytest.mark.parametrize(
+    ("offset", "accepted"),
+    [
+        (timedelta(hours=-24, microseconds=-1), False),
+        (timedelta(hours=-24), True),
+        (timedelta(hours=-12), True),
+        (timedelta(0), True),
+        (timedelta(minutes=5), True),
+        (timedelta(minutes=5, microseconds=1), False),
+    ],
+)
+def test_freshness_window_has_inclusive_utc_boundaries(offset, accepted):
+    data = reading()
+    observed_at = NOW + offset
+    data["observed_at"] = observed_at.isoformat()
+    if accepted:
+        telemetry = validate_delivery(topic(data), json.dumps(data).encode())
+        assert telemetry.observed_at == observed_at
+    else:
+        with pytest.raises(PermanentRejection, match="freshness window"):
+            validate_delivery(topic(data), json.dumps(data).encode())
+
+
+@pytest.mark.parametrize("offset", [timedelta(hours=-25), timedelta(minutes=6)])
+def test_outside_freshness_window_rejects_before_opening_database(offset):
+    data = reading()
+    data["observed_at"] = (NOW + offset).isoformat()
+    factory = MagicMock()
+    ingestor = TelemetryIngestor(factory)
+    with pytest.raises(PermanentRejection, match="freshness window"):
+        ingestor.ingest(topic(data), json.dumps(data).encode())
+    factory.assert_not_called()
+
+
+@pytest.mark.parametrize("observed_at", ["0001-01-01T00:00:00Z", "9999-12-31T23:59:59Z"])
+def test_extreme_utc_dates_are_permanent_freshness_rejections(observed_at):
+    data = reading()
+    data["observed_at"] = observed_at
+    with pytest.raises(PermanentRejection, match="freshness window"):
+        validate_delivery(topic(data), json.dumps(data).encode())
+
+
+def test_freshness_uses_current_clock_for_each_delivery(monkeypatch):
+    clock = [NOW]
+    monkeypatch.setattr("app.telemetry_ingest._utc_now", lambda: clock[0])
+    data = reading()
+    data["observed_at"] = (NOW - timedelta(hours=24)).isoformat()
+    assert validate_delivery(topic(data), json.dumps(data).encode())
+    clock[0] += timedelta(microseconds=1)
+    with pytest.raises(PermanentRejection, match="freshness window"):
+        validate_delivery(topic(data), json.dumps(data).encode())
