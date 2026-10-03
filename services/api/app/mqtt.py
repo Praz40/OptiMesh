@@ -114,8 +114,14 @@ class MqttBridge:
                                 client.acknowledge(message)
                         else:
                             logger.warning("Rejected unsupported MQTT delivery QoS")
-            except (aiomqtt.MqttError, OSError):
-                logger.warning("MQTT disconnected; retrying in %.0fs", delay)
+            except (aiomqtt.MqttError, OSError) as error:
+                # Connection, TLS and authorization errors carry no payload or credentials.
+                logger.warning(
+                    "MQTT disconnected; retrying in %.0fs (%s: %s)",
+                    delay,
+                    type(error).__name__,
+                    error,
+                )
             finally:
                 self._client = None
             await asyncio.sleep(delay)
@@ -158,9 +164,10 @@ class MqttBridge:
             NotFound,
             InvalidRequest,
             DatabaseUnavailable,
-        ):
-            # ValidationError is a ValueError; listed for clarity.
-            logger.warning("Rejected invalid MQTT message")
+        ) as error:
+            # ValidationError is a ValueError; listed for clarity. Log only the class name:
+            # pydantic messages contain input values.
+            logger.warning("Rejected invalid MQTT message on %s (%s)", topic, type(error).__name__)
         except SQLAlchemyError:
             # Database outages must not exhaust a poison-message budget and lose readings.
             raise aiomqtt.MqttError("MQTT database processing failed") from None
