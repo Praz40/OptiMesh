@@ -255,14 +255,12 @@ Branch `feature/<slug>` from `develop`, one issue per branch, and open a PR into
 
 ## Team
 
-From `git log` and the merged pull requests.
-
 | GitHub user | Built |
 | --- | --- |
-| [Praz40](https://github.com/Praz40) | Project foundation: FastAPI and Next.js skeleton, models and migration `0001`, CI, backlog script, CodeRabbit config (#1). Site/device registry, measurement history and Supabase JWT verification for `/sites` (#20). Repository owner. |
-| [unkownshadows](https://github.com/unkownshadows) (git author `baihui11`) | Opened and merged the live vertical slice: command and ack contracts, MQTT bridge, WebSocket, commands, dashboard, seed and device simulator (#21; its four commits carry the author "Claude"). App shell and dashboard, the `/simulator` game, the Windows event-loop fix for the simulator, and the tariff, forecast, cost and recommendation modules (five commits in #28). |
-| [DGtao13](https://github.com/DGtao13) | ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). |
-| [GamingSimpwa](https://github.com/GamingSimpwa) (Stoyan) | `develop` synced with `main` and one migration chain, CLAUDE.md and CONTRIBUTING.md (#23). Scenario simulator and LP Autopilot (#24). Verified TLS for the MQTT bridge (#25). Integration of the dashboard and game branch (#28). MQTT disconnect reasons in the logs (#29). Forecast, costs and recommendations routes (#30). Project report (#31). |
+| [Praz40](https://github.com/Praz40) (Dimitar)| Project foundation: FastAPI and Next.js skeleton, models and migration `0001`, CI, backlog script, CodeRabbit config (#1). Site/device registry, measurement history and Supabase JWT verification for `/sites` (#20). Repository owner. |
+| [unkownshadows](https://github.com/unkownshadows) (Yordan)| Opened and merged the live vertical slice: command and ack contracts, MQTT bridge, WebSocket, commands, dashboard, seed and device simulator. App shell and dashboard, the `/simulator` game, the Windows event-loop fix for the simulator, and the tariff, forecast, cost and recommendation modules (five commits in #28). |
+| [DGtao13](https://github.com/DGtao13) (Daniel)| ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). |
+| [GamingSimpwa](https://github.com/GamingSimpwa) (Stoyan)| `develop` synced with `main` and one migration chain, CLAUDE.md and CONTRIBUTING.md (#23). Scenario simulator and LP Autopilot (#24). Verified TLS for the MQTT bridge (#25). Integration of the dashboard and game branch (#28). MQTT disconnect reasons in the logs (#29). Forecast, costs and recommendations routes (#30). Project report (#31). |
 
 ## Limitations
 
