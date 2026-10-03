@@ -103,6 +103,72 @@ export type LiveEvent =
   | { type: "snapshot"; data: SiteSnapshot }
   | { type: "command"; data: Command };
 
+/** One forecast hour. Expectations, never measurements. Prices per kWh in the forecast's currency. */
+export type ForecastInterval = {
+  start: string;
+  end: string;
+  solar_w: number | null;
+  load_w: number | null;
+  import_price: number;
+  export_price: number;
+};
+
+export type Forecast = {
+  site_id: string;
+  timezone: string;
+  currency: string;
+  tariff: string;
+  generated_at: string;
+  interval_minutes: number;
+  intervals: ForecastInterval[];
+  assumptions: string[];
+};
+
+export type CostInterval = {
+  start: string;
+  end: string;
+  import_wh: number;
+  export_wh: number;
+  import_price: number;
+  export_price: number;
+  /** Import cost minus export revenue. */
+  cost: number;
+};
+
+/** Today's measured energy cost at the grid meter, local day. */
+export type Costs = {
+  site_id: string;
+  timezone: string;
+  currency: string;
+  tariff: string;
+  day_start: string;
+  as_of: string;
+  has_meter: boolean;
+  intervals: CostInterval[];
+  import_wh: number;
+  export_wh: number;
+  import_cost: number;
+  export_revenue: number;
+  cost: number;
+  projected_day_cost: number | null;
+  assumptions: string[];
+};
+
+/** A proposed command. Nothing is sent until Assist posts `action` to the command API. */
+export type Recommendation = {
+  /** Stable per rule and device, so it can be tracked across refreshes. */
+  id: string;
+  rule: string;
+  device_id: string;
+  device_name: string;
+  title: string;
+  detail: string;
+  action: CommandRequest;
+  /** Rough estimate, in `currency`. */
+  saving_per_hour: number;
+  currency: string;
+};
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isUuid(value: string): boolean {
@@ -159,6 +225,11 @@ export const api = {
     }),
   commands: (siteId: string, signal?: AbortSignal) =>
     request<Command[]>(`/api/v1/sites/${siteId}/commands?limit=50`, { signal }),
+  forecast: (siteId: string, signal?: AbortSignal) =>
+    request<Forecast>(`/api/v1/sites/${siteId}/forecast`, { signal }),
+  costs: (siteId: string, signal?: AbortSignal) => request<Costs>(`/api/v1/sites/${siteId}/costs`, { signal }),
+  recommendations: (siteId: string, signal?: AbortSignal) =>
+    request<Recommendation[]>(`/api/v1/sites/${siteId}/recommendations`, { signal }),
   sendCommand: (siteId: string, deviceId: string, body: CommandRequest) =>
     request<Command>(`/api/v1/sites/${siteId}/devices/${deviceId}/commands`, {
       method: "POST",

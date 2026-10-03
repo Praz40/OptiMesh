@@ -19,6 +19,8 @@ export const SITE_TABS = [
   { slug: "", label: "Overview" },
   { slug: "devices", label: "Devices" },
   { slug: "activity", label: "Activity" },
+  { slug: "forecast", label: "Прогноза" },
+  { slug: "costs", label: "Разходи" },
 ] as const;
 
 function SiteSwitcher({ siteId, tab }: { siteId: string; tab: string }) {

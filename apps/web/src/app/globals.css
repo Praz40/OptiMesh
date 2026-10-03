@@ -174,6 +174,8 @@ input, select {
 .notice { display: flex; gap: 10px; align-items: flex-start; background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 11px 14px; margin-bottom: 16px; font-size: 14px; }
 .notice[data-tone="bad"] { background: var(--bad-soft); color: var(--bad); }
 .notice[data-tone="info"] { background: var(--surface-2); color: var(--ink-2); }
+.notice svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.notice strong { color: inherit; font-weight: 650; }
 .empty-state { padding: 72px 16px; text-align: center; display: grid; gap: 10px; justify-items: center; color: var(--muted); }
 .empty-state h1, .empty-state h2 { color: var(--ink); }
 
@@ -182,8 +184,10 @@ input, select {
 .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .panel-head .muted { font-size: 12.5px; }
 .footnote { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+.assumptions { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); font-size: 13.5px; }
 .grid-2 { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .stack { display: grid; gap: 16px; min-width: 0; }
+.stack > .kpis, .stack > .notice { margin: 0; }
 .span-all { grid-column: 1 / -1; }
 
 /* KPI tiles */
@@ -281,6 +285,8 @@ details.table-view summary { color: var(--muted); cursor: pointer; width: max-co
 .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .data-table tr:last-child td { border-bottom: 0; }
 .data-table .right { text-align: right; }
+.data-table tfoot :is(th, td) { position: static; font-weight: 650; color: var(--ink); border-top: 1px solid var(--line-strong); border-bottom: 0; }
+.table-scroll.table-tall { max-height: 520px; margin-top: 0; }
 
 /* Devices */
 .device-list { list-style: none; margin: 0; padding: 0; }
