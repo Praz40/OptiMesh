@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import ssl
 from uuid import UUID
 
 import aiomqtt
@@ -16,6 +17,15 @@ from app.topics import Channel, device_topic, parse_device_topic, subscription
 logger = logging.getLogger(__name__)
 
 
+def tls_context(settings: Settings) -> ssl.SSLContext | None:
+    """TLS for MQTT_TLS=true: the broker certificate and hostname are always verified."""
+    if not settings.mqtt_tls:
+        return None
+    cafile = str(settings.mqtt_ca_file) if settings.mqtt_ca_file is not None else None
+    # Requires a valid chain (CERT_REQUIRED) and checks MQTT_HOST against the certificate.
+    return ssl.create_default_context(cafile=cafile)
+
+
 class MqttBridge:
     def __init__(self, settings: Settings, platform: Platform) -> None:
         if settings.mqtt_host is None:
@@ -27,6 +37,8 @@ class MqttBridge:
             settings.mqtt_password.get_secret_value() if settings.mqtt_password else None
         )
         self._prefix = settings.mqtt_topic_prefix
+        # Built once at startup, so a missing or invalid CA file fails loudly instead of per retry.
+        self._tls_context = tls_context(settings)
         self._platform = platform
         self._client: aiomqtt.Client | None = None
 
@@ -45,6 +57,7 @@ class MqttBridge:
                     username=self._username,
                     password=self._password,
                     identifier=None,
+                    tls_context=self._tls_context,
                 ) as client:
                     await client.subscribe(subscription(self._prefix, Channel.TELEMETRY), qos=1)
                     await client.subscribe(subscription(self._prefix, Channel.ACK), qos=1)

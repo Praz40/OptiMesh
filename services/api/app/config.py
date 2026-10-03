@@ -1,4 +1,4 @@
-from pydantic import HttpUrl, SecretStr, field_validator
+from pydantic import FilePath, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     mqtt_username: str | None = None
     mqtt_password: SecretStr | None = None
     mqtt_topic_prefix: str = "optimesh/v1"
+    # TLS always verifies the broker certificate and hostname; there is no setting to turn that off.
+    mqtt_tls: bool = False
+    # CA bundle (PEM) that signed the broker certificate. Without it the system trust store is used.
+    mqtt_ca_file: FilePath | None = None
     # A device is offline when no telemetry arrived for this long.
     device_stale_after_s: float = 15.0
     # Devices must acknowledge a command within this time or it expires.
@@ -36,3 +40,10 @@ class Settings(BaseSettings):
                 "SUPABASE_URL must be an HTTPS project URL without a path or credentials"
             )
         return value
+
+    @model_validator(mode="after")
+    def ca_file_requires_tls(self) -> "Settings":
+        # A CA file without TLS would silently send MQTT credentials in plain text.
+        if self.mqtt_ca_file is not None and not self.mqtt_tls:
+            raise ValueError("MQTT_CA_FILE is set but MQTT_TLS is false; set MQTT_TLS=true")
+        return self

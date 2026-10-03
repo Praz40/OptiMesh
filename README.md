@@ -40,6 +40,21 @@ npm ci && npm run dev                                      # dashboard on :3000 
 
 Open http://localhost:3000, pick a site and flip a switch. The command log shows `Applied` only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
+### MQTT over TLS
+
+The hardware team's broker (Mosquitto on the Raspberry Pi) uses TLS on port 8883 with a username/password and per-device ACLs. Point the API at it in services/api/.env:
+
+```sh
+MQTT_HOST=broker.example.lan        # must match the broker certificate (DNS name or IP in its SAN)
+MQTT_PORT=8883
+MQTT_TLS=true
+MQTT_CA_FILE=/path/to/broker-ca.crt # CA that signed the broker certificate; omit to use the system trust store
+MQTT_USERNAME=...
+MQTT_PASSWORD=...
+```
+
+With `MQTT_TLS=true` the API's MQTT bridge and `python -m app.simulator` verify the broker certificate chain and hostname; there is no setting to disable verification. A missing or unreadable `MQTT_CA_FILE` stops the API at startup, and `MQTT_CA_FILE` without `MQTT_TLS=true` is rejected so credentials are never sent in plain text by mistake. `MQTT_TLS` defaults to `false` for the local `docker compose` broker on 1883.
+
 ## Quick start
 
 Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/). uv can install Python 3.12. Run commands from the Git repository root (the nested OptiMesh folder).
