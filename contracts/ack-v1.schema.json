@@ -66,5 +66,40 @@
         }
       }
     }
-  }
+  },
+  "$comment": "Consumers MUST assert uuid and date-time formats during validation; Draft 2020-12 format annotations alone do not validate these values. See docs/contracts.md for validation and runtime requirements.",
+  "description": "Acknowledgement for the current set_enabled-only MVP. Adding another command requires reviewing the applied state requirement.",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "applied"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error_code": {
+            "type": "null"
+          },
+          "state": {
+            "required": [
+              "enabled"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "error_code": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
 }

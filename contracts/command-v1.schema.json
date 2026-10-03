@@ -56,5 +56,6 @@
         }
       }
     }
-  }
+  },
+  "$comment": "Consumers MUST assert uuid and date-time formats during validation; Draft 2020-12 format annotations alone do not validate these values. See docs/contracts.md for validation and runtime requirements."
 }
