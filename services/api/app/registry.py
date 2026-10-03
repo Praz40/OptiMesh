@@ -6,7 +6,7 @@ Live snapshots and commands are served by /api/v1, which does not check tokens y
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.auth import Principal, PrincipalDep
 from app.dependencies import SessionDep
 from app.history import read_history
 from app.models import Device, Site
+from app.platform import Platform
 from app.registry_schemas import (
     DeviceCreate,
     DeviceRead,
@@ -83,7 +84,11 @@ def create_site(payload: SiteCreate, principal: PrincipalDep, session: SessionDe
     response_model_exclude_none=True,
 )
 def create_device(
-    site_id: UUID, payload: DeviceCreate, principal: PrincipalDep, session: SessionDep
+    site_id: UUID,
+    payload: DeviceCreate,
+    request: Request,
+    principal: PrincipalDep,
+    session: SessionDep,
 ) -> DeviceRead:
     owned_site(session, principal, site_id)
     device = Device(
@@ -98,6 +103,9 @@ def create_device(
     session.flush()
     result = DeviceRead.model_validate(device)
     session.commit()
+    # After the commit: earlier, a concurrent snapshot could cache the old list again.
+    platform: Platform = request.app.state.platform
+    platform.forget_site_devices(site_id)
     return result
 
 
