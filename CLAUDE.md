@@ -34,7 +34,7 @@ scripts/               GitHub backlog setup and config validation (run in CI)
 ## Routes and auth state
 
 - `/api/v1/...` (sites, snapshot, measurements, telemetry, commands, WebSocket `/api/v1/sites/{id}/live`, status): **no authentication yet**. Any client that reaches the API can read every site and send commands. Keep it on localhost or a trusted LAN.
-- `/sites` (`POST /sites`, `POST /sites/{id}/devices`, `GET /sites/{id}/measurements`): require a Supabase bearer token (`app/auth.py`) and check `Site.owner_id` (`app/registry.py`). Without a token they answer 401; without `SUPABASE_URL` they fail closed with 503.
+- `/sites` (`GET /sites`, `POST /sites`, `GET /sites/{id}/devices`, `POST /sites/{id}/devices`, `GET /sites/{id}/measurements`): require a Supabase bearer token (`app/auth.py`) and check `Site.owner_id` (`app/registry.py`). Without a token they answer 401; without `SUPABASE_URL` they fail closed with 503.
 - Issue #3 extends verification to `/api/v1`, the WebSocket and commands. Do not add or remove auth on existing routes as a side effect of another issue.
 - `/health` (liveness) and `/ready` (database) are public.
 
