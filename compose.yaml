@@ -12,6 +12,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports: ['127.0.0.1:1883:1883']
+    volumes: ['./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro']
   api:
     profiles: [api]
     build:
@@ -20,10 +24,15 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://optimesh:optimesh@db:5432/optimesh
       CORS_ORIGINS: '["http://localhost:3000"]'
+      MQTT_HOST: mqtt
+      MQTT_PORT: 1883
+      MQTT_TLS: false
     ports: ['127.0.0.1:8000:8000']
     depends_on:
       db:
         condition: service_healthy
+      mqtt:
+        condition: service_started
   migrate:
     profiles: [tools]
     build:

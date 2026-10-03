@@ -1,180 +1,162 @@
-"""A telemetry-only MQTT 3.1.1 subscriber with commit-before-PUBACK processing."""
+"""MQTT adapter: subscribes to device telemetry and acks, publishes commands."""
 
+import asyncio
+import json
 import logging
 import ssl
-from threading import Event, Thread
-from typing import Literal
+from uuid import UUID
 
-import paho.mqtt.client as mqtt
-from paho.mqtt.enums import CallbackAPIVersion
-from paho.mqtt.properties import Properties
-from paho.mqtt.reasoncodes import ReasonCode
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
+import aiomqtt
+import paho.mqtt.client as paho
+from pydantic import ValidationError
 
 from app.config import Settings
-from app.telemetry_ingest import PermanentRejection, TelemetryIngestor
+from app.platform import InvalidRequest, NotFound, Platform
+from app.schemas import CommandAck, CommandMessage, Telemetry
+from app.topics import Channel, device_topic, parse_device_topic, subscription
 
 logger = logging.getLogger(__name__)
-MqttStatus = Literal["disconnected", "connected"]
+MAX_PAYLOAD_BYTES = 4096
 
 
-class MqttSubscriber:
-    def __init__(self, settings: Settings, engine: Engine) -> None:
-        assert settings.mqtt_host is not None
-        assert settings.mqtt_ca_cert is not None
-        assert settings.mqtt_username is not None
-        assert settings.mqtt_password is not None
-        assert settings.mqtt_client_id is not None
-        assert settings.mqtt_telemetry_topic is not None
+class ReliableClient(aiomqtt.Client):
+    """Isolate aiomqtt's internal Paho access for commit-before-PUBACK delivery.
+
+    aiomqtt has no public manual-ack API. Compatibility tests cover these two
+    operations against the locked aiomqtt/Paho versions.
+    """
+
+    def enable_manual_ack(self) -> None:
+        self._client.manual_ack_set(True)
+
+    def acknowledge(self, message: aiomqtt.Message) -> None:
+        if self._client.ack(message.mid, message.qos) != paho.MQTT_ERR_SUCCESS:
+            raise aiomqtt.MqttError("MQTT acknowledgement failed")
+
+
+class MqttBridge:
+    def __init__(self, settings: Settings, platform: Platform) -> None:
+        if settings.mqtt_host is None:
+            raise ValueError("MQTT_HOST is required")
         self._host = settings.mqtt_host
         self._port = settings.mqtt_port
-        self._topic = settings.mqtt_telemetry_topic
-        self._ingestor = TelemetryIngestor(sessionmaker(engine))
-        self._stop = Event()
-        self._connected = Event()
-        self._thread: Thread | None = None
-        self._subscription_mid: int | None = None
-        self._retry_delay = 1.0
-        self._client = mqtt.Client(
-            CallbackAPIVersion.VERSION2,
-            client_id=settings.mqtt_client_id,
-            clean_session=False,
-            protocol=mqtt.MQTTv311,
-            manual_ack=True,
+        self._username = (
+            settings.mqtt_username.get_secret_value() if settings.mqtt_username else None
         )
-        context = ssl.create_default_context(cafile=str(settings.mqtt_ca_cert))
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
-        self._client.tls_set_context(context)
-        self._client.username_pw_set(
-            settings.mqtt_username.get_secret_value(), settings.mqtt_password.get_secret_value()
+        self._password = (
+            settings.mqtt_password.get_secret_value() if settings.mqtt_password else None
         )
-        self._client.connect_timeout = 3
-        self._client.reconnect_delay_set(min_delay=1, max_delay=30)
-        self._client.on_connect = self._on_connect
-        self._client.on_subscribe = self._on_subscribe
-        self._client.on_disconnect = self._on_disconnect
-        self._client.on_connect_fail = self._on_connect_fail
-        self._client.on_message = self._on_message
+        self._identifier = settings.mqtt_client_id
+        self._tls_context = None
+        if settings.mqtt_tls:
+            if settings.mqtt_ca_cert is None:
+                raise ValueError("MQTT_CA_CERT is required")
+            self._tls_context = ssl.create_default_context(cafile=str(settings.mqtt_ca_cert))
+            self._tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        self._prefix = settings.mqtt_topic_prefix
+        self._telemetry_topic = settings.mqtt_telemetry_topic
+        self._ack_topic = (
+            self._telemetry_topic.rsplit("/", 1)[0] + "/ack"
+            if self._telemetry_topic
+            else subscription(self._prefix, Channel.ACK)
+        )
+        self._platform = platform
+        self._client: aiomqtt.Client | None = None
 
     @property
-    def status(self) -> MqttStatus:
-        return "connected" if self._connected.is_set() else "disconnected"
+    def connected(self) -> bool:
+        return self._client is not None
 
-    def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
-            raise RuntimeError("MQTT subscriber already started")
-        self._stop.clear()
-        self._thread = Thread(target=self._run, name="mqtt-telemetry", daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-        self._connected.clear()
-        self._client.disconnect()
-        if self._thread is not None:
-            self._thread.join()
-
-    def _run(self) -> None:
-        self._retry_delay = 1.0
-        while not self._stop.is_set():
+    async def run(self) -> None:
+        """Connect and process messages forever, reconnecting with backoff."""
+        delay = 1.0
+        while True:
             try:
-                self._client.connect_async(self._host, self._port, keepalive=60)
-                if self._stop.is_set():
-                    self._client.disconnect()
-                    break
-                # Paho handles ordinary transport reconnects. An intentional disconnect
-                # after a DB failure ends this loop; the supervisor reconnects the same
-                # persistent session so Mosquitto can resend the unacknowledged delivery.
-                self._client.loop_forever(retry_first_connection=True)
-            except Exception:
-                # Transport/driver exceptions may include credentials; log no exception text.
-                logger.warning("MQTT worker failed; reconnecting")
-                self._client.disconnect()
+                client = ReliableClient(
+                    self._host,
+                    self._port,
+                    username=self._username,
+                    password=self._password,
+                    identifier=self._identifier,
+                    protocol=aiomqtt.ProtocolVersion.V311,
+                    clean_session=False if self._identifier else True,
+                    tls_context=self._tls_context,
+                    tls_insecure=False if self._tls_context else None,
+                )
+                client.enable_manual_ack()
+                async with client:
+                    for topic in (
+                        self._telemetry_topic or subscription(self._prefix, Channel.TELEMETRY),
+                        self._ack_topic,
+                    ):
+                        granted = await client.subscribe(topic, qos=1)
+                        if len(granted) != 1 or granted[0] != 1:
+                            raise aiomqtt.MqttError("Broker did not grant QoS 1 subscription")
+                    self._client = client
+                    delay = 1.0
+                    logger.info("MQTT connected; telemetry and ack subscriptions accepted")
+                    async for message in client.messages:
+                        if message.qos in (0, 1):
+                            await self.handle(str(message.topic), message.payload)
+                            if message.qos == 1:
+                                client.acknowledge(message)
+                        else:
+                            logger.warning("Rejected unsupported MQTT delivery QoS")
+            except (aiomqtt.MqttError, OSError):
+                logger.warning("MQTT disconnected; retrying in %.0fs", delay)
             finally:
-                self._connected.clear()
-            if self._stop.wait(self._retry_delay):
-                break
-            self._retry_delay = min(self._retry_delay * 2, 30.0)
+                self._client = None
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30.0)
 
-    def _on_connect(
-        self,
-        client: mqtt.Client,
-        userdata: object,
-        flags: mqtt.ConnectFlags,
-        reason_code: ReasonCode,
-        properties: Properties | None,
-    ) -> None:
-        self._connected.clear()
-        self._subscription_mid = None
-        if self._stop.is_set():
-            client.disconnect()
-        elif reason_code.is_failure:
-            logger.warning("MQTT connection rejected")
-        else:
-            result, self._subscription_mid = client.subscribe(self._topic, qos=1)
-            if result != mqtt.MQTT_ERR_SUCCESS:
-                logger.warning("MQTT subscription could not be sent")
-                client.disconnect()
-
-    def _on_subscribe(
-        self,
-        client: mqtt.Client,
-        userdata: object,
-        mid: int,
-        reason_codes: list[ReasonCode],
-        properties: Properties | None,
-    ) -> None:
-        if mid != self._subscription_mid or self._stop.is_set():
+    async def handle(self, topic: str, payload: object) -> None:
+        """Validate and dispatch one message. Bad messages are logged, never fatal."""
+        parts = parse_device_topic(self._prefix, topic)
+        if parts is None or parts.channel == Channel.COMMAND:
             return
-        if len(reason_codes) == 1 and reason_codes[0] == 1:
-            self._retry_delay = 1.0
-            self._connected.set()
-            logger.info("MQTT telemetry subscription connected")
-        else:
-            logger.warning("MQTT QoS 1 subscription rejected")
-            client.disconnect()
-
-    def _on_disconnect(
-        self,
-        client: mqtt.Client,
-        userdata: object,
-        flags: mqtt.DisconnectFlags,
-        reason_code: ReasonCode,
-        properties: Properties | None,
-    ) -> None:
-        self._connected.clear()
-
-    def _on_connect_fail(self, client: mqtt.Client, userdata: object) -> None:
-        self._connected.clear()
-        logger.warning("MQTT connection unavailable; retrying")
-
-    def _on_message(self, client: mqtt.Client, userdata: object, message: mqtt.MQTTMessage) -> None:
-        if self._stop.is_set():
+        if self._telemetry_topic is not None and topic not in (
+            self._telemetry_topic,
+            self._ack_topic,
+        ):
             return
         try:
-            # A persistent session can carry an older subscription. Accept only the
-            # configured scope, independently of the broker's subscription/ACL checks.
-            try:
-                topic = message.topic
-            except UnicodeError:
-                raise PermanentRejection("Invalid topic encoding") from None
-            if topic != self._topic:
-                raise PermanentRejection("Delivery outside configured subscription")
-            if message.qos != 1:
-                raise PermanentRejection("Expected QoS 1 telemetry")
-            outcome = self._ingestor.ingest(topic, message.payload)
-            logger.info("MQTT telemetry %s", outcome.value)
-        except PermanentRejection:
-            logger.warning("MQTT telemetry permanently rejected")
+            if not isinstance(payload, bytes | bytearray | str):
+                raise ValueError("Unsupported payload type")
+            size = len(payload.encode("utf-8")) if isinstance(payload, str) else len(payload)
+            if not 0 < size <= MAX_PAYLOAD_BYTES:
+                raise ValueError("Invalid payload size")
+            data = json.loads(payload)
+            if parts.channel == Channel.TELEMETRY:
+                telemetry = Telemetry.model_validate(data)
+                if (telemetry.site_id, telemetry.device_id) != (parts.site_id, parts.device_id):
+                    raise ValueError("Payload ids do not match the topic")
+                stored = await self._platform.ingest_telemetry(telemetry)
+                logger.info("MQTT telemetry %s", "stored" if stored else "duplicate")
+            else:
+                ack = CommandAck.model_validate(data)
+                await self._platform.handle_ack(parts.site_id, parts.device_id, ack)
+        except (
+            ValueError,
+            ValidationError,
+            OverflowError,
+            RecursionError,
+            NotFound,
+            InvalidRequest,
+        ):
+            # ValidationError is a ValueError; listed for clarity.
+            logger.warning("Rejected invalid MQTT message")
         except Exception:
-            logger.warning("MQTT telemetry processing failed; reconnecting without acknowledgement")
-            self._connected.clear()
-            client.disconnect()
-            return
-        # Poison messages are intentionally consumed. Valid messages reach this point
-        # only after commit, including a committed ON CONFLICT duplicate check.
-        if message.qos > 0 and client.ack(message.mid, message.qos) != mqtt.MQTT_ERR_SUCCESS:
-            logger.warning("MQTT acknowledgement failed; reconnecting")
-            self._connected.clear()
-            client.disconnect()
+            # No PUBACK: reconnect the persistent session so the broker can replay.
+            raise aiomqtt.MqttError("MQTT message processing failed") from None
+
+    async def publish_command(
+        self, site_id: UUID, device_id: UUID, message: CommandMessage
+    ) -> None:
+        client = self._client
+        if client is None:
+            raise ConnectionError("MQTT is not connected")
+        await client.publish(
+            device_topic(self._prefix, site_id, device_id, Channel.COMMAND),
+            message.model_dump_json(),
+            qos=1,
+        )

@@ -54,12 +54,8 @@ def token(signing_key, **changes):
 @pytest.mark.parametrize(
     ("method", "path"),
     [
-        ("GET", "/sites"),
         ("POST", "/sites"),
-        ("GET", "/sites/" + str(uuid4())),
-        ("GET", "/sites/" + str(uuid4()) + "/devices"),
         ("POST", "/sites/" + str(uuid4()) + "/devices"),
-        ("GET", "/sites/" + str(uuid4()) + "/devices/" + str(uuid4())),
         ("GET", "/sites/" + str(uuid4()) + "/measurements"),
     ],
 )
@@ -70,7 +66,7 @@ def test_registry_requires_authentication(auth_client, method, path):
 
 
 def test_valid_signed_token_reaches_database_dependency(auth_client, signing_key):
-    response = auth_client.get("/sites", headers={"Authorization": "Bearer " + token(signing_key)})
+    response = auth_client.post("/sites", headers={"Authorization": "Bearer " + token(signing_key)})
     assert response.status_code == 503
     assert response.json() == {"detail": "Database unavailable"}
 
@@ -89,7 +85,7 @@ def test_valid_signed_token_reaches_database_dependency(auth_client, signing_key
     ],
 )
 def test_invalid_claims_cannot_access_registry(auth_client, signing_key, changes):
-    response = auth_client.get(
+    response = auth_client.post(
         "/sites", headers={"Authorization": "Bearer " + token(signing_key, **changes)}
     )
     assert response.status_code == 401
@@ -103,14 +99,15 @@ def test_required_claims_cannot_be_omitted(auth_client, signing_key, claim):
     claims.pop(claim)
     encoded = jwt.encode(claims, signing_key, algorithm="RS256", headers={"kid": "test-key"})
     assert (
-        auth_client.get("/sites", headers={"Authorization": "Bearer " + encoded}).status_code == 401
+        auth_client.post("/sites", headers={"Authorization": "Bearer " + encoded}).status_code
+        == 401
     )
 
 
 def test_forged_signature_cannot_access_registry(auth_client):
     forged_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     assert (
-        auth_client.get(
+        auth_client.post(
             "/sites", headers={"Authorization": "Bearer " + token(forged_key)}
         ).status_code
         == 401
@@ -132,7 +129,8 @@ def test_forged_signature_cannot_access_registry(auth_client):
 )
 def test_malformed_or_unsupported_tokens_are_rejected(auth_client, encoded):
     assert (
-        auth_client.get("/sites", headers={"Authorization": "Bearer " + encoded}).status_code == 401
+        auth_client.post("/sites", headers={"Authorization": "Bearer " + encoded}).status_code
+        == 401
     )
 
 
@@ -141,14 +139,14 @@ def test_jwks_outage_is_controlled(auth_client, signing_key, monkeypatch):
         raise URLError("sensitive-host-details")
 
     monkeypatch.setattr("urllib.request.OpenerDirector.open", unavailable)
-    response = auth_client.get("/sites", headers={"Authorization": "Bearer " + token(signing_key)})
+    response = auth_client.post("/sites", headers={"Authorization": "Bearer " + token(signing_key)})
     assert response.status_code == 503
     assert "sensitive-host-details" not in response.text
 
 
 def test_missing_auth_configuration_fails_closed():
     with TestClient(create_app(Settings(_env_file=None, database_url=None))) as client:
-        response = client.get("/sites", headers={"Authorization": "Bearer ignored"})
+        response = client.post("/sites", headers={"Authorization": "Bearer ignored"})
         assert response.status_code == 503
         assert response.json() == {"detail": "Authentication unavailable"}
 
@@ -168,7 +166,7 @@ def test_auth_provider_invalid_responses_are_unavailable(
     monkeypatch.setattr(
         "urllib.request.OpenerDirector.open", lambda *args, **kwargs: BytesIO(payload)
     )
-    response = auth_client.get("/sites", headers={"Authorization": "Bearer " + token(signing_key)})
+    response = auth_client.post("/sites", headers={"Authorization": "Bearer " + token(signing_key)})
     assert response.status_code == 503
     assert response.json() == {"detail": "Authentication unavailable"}
 
@@ -179,7 +177,8 @@ def test_unknown_signing_key_is_invalid_authentication(auth_client, signing_key)
     )
     encoded = jwt.encode(claims, signing_key, algorithm="RS256", headers={"kid": "unknown"})
     assert (
-        auth_client.get("/sites", headers={"Authorization": "Bearer " + encoded}).status_code == 401
+        auth_client.post("/sites", headers={"Authorization": "Bearer " + encoded}).status_code
+        == 401
     )
 
 
@@ -205,6 +204,6 @@ def test_es256_project_tokens_are_verified(auth_client, monkeypatch):
         algorithm="ES256",
         headers={"kid": "ec-key"},
     )
-    response = auth_client.get("/sites", headers={"Authorization": "Bearer " + encoded})
+    response = auth_client.post("/sites", headers={"Authorization": "Bearer " + encoded})
     assert response.status_code == 503
     assert response.json() == {"detail": "Database unavailable"}

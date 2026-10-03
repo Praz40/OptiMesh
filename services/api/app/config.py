@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.telemetry_ingest import parse_telemetry_topic
+from app.topics import Channel, parse_device_topic
 
 
 class Settings(BaseSettings):
@@ -11,7 +11,22 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     migration_database_url: SecretStr | None = None
     cors_origins: list[str] = ["http://localhost:3000"]
+    # MQTT is optional: without MQTT_HOST the API still serves data and accepts HTTP telemetry.
+    mqtt_host: str | None = None
+    mqtt_port: int = Field(default=8883, ge=1, le=65535)
+    mqtt_tls: bool = True
+    mqtt_ca_cert: Path | None = None
+    mqtt_client_id: str | None = Field(default=None, min_length=1, max_length=128)
+    mqtt_telemetry_topic: str | None = None
+    mqtt_username: SecretStr | None = None
+    mqtt_password: SecretStr | None = None
+    mqtt_topic_prefix: str = "optimesh/v1"
+    # A device is offline when no telemetry arrived for this long.
+    device_stale_after_s: float = 15.0
+    # Devices must acknowledge a command within this time or it expires.
+    command_ttl_s: float = 15.0
 
+    # Supabase project whose signing keys verify bearer tokens on the /sites routes.
     supabase_url: HttpUrl | None = None
 
     @field_validator("supabase_url")
@@ -30,15 +45,6 @@ class Settings(BaseSettings):
             )
         return value
 
-    # MQTT is opt-in. Host unset means no subscriber or broker connection.
-    mqtt_host: str | None = None
-    mqtt_port: int = Field(default=8883, ge=1, le=65535)
-    mqtt_ca_cert: Path | None = None
-    mqtt_username: SecretStr | None = None
-    mqtt_password: SecretStr | None = None
-    mqtt_client_id: str | None = Field(default=None, min_length=1, max_length=128)
-    mqtt_telemetry_topic: str | None = None
-
     @field_validator("mqtt_host")
     @classmethod
     def validate_mqtt_host(cls, value: str | None) -> str | None:
@@ -48,30 +54,40 @@ class Settings(BaseSettings):
             raise ValueError("MQTT_HOST must be a hostname or IP without credentials or a URI")
         return value
 
-    @field_validator("mqtt_telemetry_topic")
+    @field_validator("mqtt_topic_prefix")
     @classmethod
-    def validate_mqtt_topic(cls, value: str | None) -> str | None:
-        if value is not None:
-            parse_telemetry_topic(value)
+    def validate_mqtt_prefix(cls, value: str) -> str:
+        if not value or any(c in value for c in "+#\x00") or value.endswith("/"):
+            raise ValueError("MQTT_TOPIC_PREFIX must be a nonempty literal prefix")
         return value
 
     @model_validator(mode="after")
     def require_mqtt_configuration(self) -> "Settings":
-        if self.mqtt_host is not None:
-            if any(
-                value is None
-                for value in (
-                    self.database_url,
-                    self.mqtt_ca_cert,
-                    self.mqtt_username,
-                    self.mqtt_password,
-                    self.mqtt_client_id,
-                    self.mqtt_telemetry_topic,
-                )
+        if self.mqtt_telemetry_topic is not None:
+            parts = parse_device_topic(self.mqtt_topic_prefix, self.mqtt_telemetry_topic)
+            if parts is None or parts.channel != Channel.TELEMETRY:
+                raise ValueError("MQTT_TELEMETRY_TOPIC must be an exact telemetry topic")
+        if self.mqtt_host is None:
+            return self
+        if not self.mqtt_tls:
+            # Preserve the anonymous local simulator broker, never downgrade a remote broker.
+            if self.mqtt_host not in ("localhost", "127.0.0.1", "::1", "mqtt") or any(
+                v is not None for v in (self.mqtt_ca_cert, self.mqtt_username, self.mqtt_password)
             ):
                 raise ValueError(
-                    "MQTT requires database, CA, backend credentials, client ID and topic"
+                    "Plain MQTT is allowed only for an explicit anonymous local development broker"
                 )
-            if not self.mqtt_username or not self.mqtt_password:
-                raise ValueError("MQTT backend credentials must not be empty")
+        elif any(
+            not v
+            for v in (
+                self.database_url,
+                self.mqtt_ca_cert,
+                self.mqtt_username,
+                self.mqtt_password,
+                self.mqtt_client_id,
+            )
+        ):
+            raise ValueError(
+                "TLS MQTT requires database, CA, backend credentials and stable client ID"
+            )
         return self

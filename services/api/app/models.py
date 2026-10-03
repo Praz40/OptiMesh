@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -36,7 +37,7 @@ class Device(Base):
     __table_args__ = (
         UniqueConstraint("id", "site_id", name="uq_devices_id_site"),
         CheckConstraint("source IN ('hardware', 'simulator')", name="valid_source"),
-        CheckConstraint("jsonb_typeof(operating_limits) = 'object'", name="limits_object"),
+        CheckConstraint("jsonb_typeof(limits) = 'object'", name="limits_object"),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     site_id: Mapped[UUID] = mapped_column(
@@ -48,7 +49,7 @@ class Device(Base):
     capabilities: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
-    operating_limits: Mapped[dict[str, float]] = mapped_column(
+    limits: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -76,6 +77,11 @@ class Measurement(Base):
         ),
         CheckConstraint("energy_wh >= 0 AND energy_wh < 'Infinity'::float8", name="valid_energy"),
         CheckConstraint("soc_pct >= 0 AND soc_pct <= 100", name="valid_soc"),
+        CheckConstraint("voltage_v >= 0 AND voltage_v < 'Infinity'::float8", name="valid_voltage"),
+        CheckConstraint(
+            "current_a > '-Infinity'::float8 AND current_a < 'Infinity'::float8",
+            name="finite_current",
+        ),
         Index("ix_measurements_device_time", "device_id", "observed_at", "id"),
         Index("ix_measurements_site_time", "site_id", "observed_at", "id"),
     )
@@ -90,3 +96,33 @@ class Measurement(Base):
     power_w: Mapped[float | None] = mapped_column(Float)
     energy_wh: Mapped[float | None] = mapped_column(Float)
     soc_pct: Mapped[float | None] = mapped_column(Float)
+    voltage_v: Mapped[float | None] = mapped_column(Float)
+    current_a: Mapped[float | None] = mapped_column(Float)
+    state: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class Command(Base):
+    __tablename__ = "commands"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["device_id", "site_id"],
+            ["optimesh.devices.id", "optimesh.devices.site_id"],
+            name="fk_commands_device_site",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'sent', 'applied', 'rejected', 'expired', 'failed')",
+            name="valid_status",
+        ),
+        Index("ix_commands_site_time", "site_id", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    site_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    device_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    type: Mapped[str] = mapped_column(String(40), nullable=False)
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
