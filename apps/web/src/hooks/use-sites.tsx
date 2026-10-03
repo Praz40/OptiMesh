@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type Site } from "@/lib/api";
 
 const POLL_MS = 3000;
@@ -10,8 +10,10 @@ export type SitesState =
   | { status: "ready"; sites: Site[]; stale: boolean }
   | { status: "error"; message: string };
 
-/** Portfolio overview, polled. Keeps showing the last data (marked stale) if a poll fails. */
-export function useSites(): SitesState {
+const SitesContext = createContext<SitesState>({ status: "loading" });
+
+/** Polls the portfolio once for the whole app. Keeps the last data (marked stale) if a poll fails. */
+export function SitesProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SitesState>({ status: "loading" });
 
   useEffect(() => {
@@ -40,5 +42,9 @@ export function useSites(): SitesState {
     };
   }, []);
 
-  return state;
+  return <SitesContext value={state}>{children}</SitesContext>;
+}
+
+export function useSites(): SitesState {
+  return useContext(SitesContext);
 }

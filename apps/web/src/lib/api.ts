@@ -45,6 +45,17 @@ export type DeviceLive = {
   state: { on: boolean | null; setpoint_w: number | null } | null;
 };
 
+/** One stored telemetry reading, from the measurement history endpoint. */
+export type Measurement = {
+  observed_at: string;
+  power_w: number | null;
+  energy_wh: number | null;
+  soc_pct: number | null;
+  voltage_v: number | null;
+  current_a: number | null;
+  state: { on?: boolean; setpoint_w?: number } | null;
+};
+
 export type SiteSummary = {
   solar_w: number | null;
   grid_w: number | null;
@@ -142,6 +153,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   sites: (signal?: AbortSignal) => request<Site[]>("/api/v1/sites", { signal }),
+  measurements: (siteId: string, deviceId: string, limit: number, signal?: AbortSignal) =>
+    request<Measurement[]>(`/api/v1/sites/${siteId}/devices/${deviceId}/measurements?limit=${limit}`, {
+      signal,
+    }),
   commands: (siteId: string, signal?: AbortSignal) =>
     request<Command[]>(`/api/v1/sites/${siteId}/commands?limit=50`, { signal }),
   sendCommand: (siteId: string, deviceId: string, body: CommandRequest) =>

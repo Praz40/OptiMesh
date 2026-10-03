@@ -17,6 +17,7 @@ import logging
 import math
 import random
 import ssl
+import sys
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -364,6 +365,8 @@ def main() -> None:
     password = settings.mqtt_password.get_secret_value() if settings.mqtt_password else None
     # Same TLS settings as the API's bridge, so credentials never go out in plain text.
     tls = tls_context(settings)
+    # paho-mqtt needs add_reader/add_writer, which Windows' default Proactor loop lacks.
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     try:
         asyncio.run(
             simulator.run(
@@ -372,7 +375,8 @@ def main() -> None:
                 settings.mqtt_username.get_secret_value() if settings.mqtt_username else None,
                 password,
                 tls,
-            )
+            ),
+            loop_factory=loop_factory,
         )
     except KeyboardInterrupt:
         pass

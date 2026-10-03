@@ -11,11 +11,13 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, select, text, update
+from sqlalchemy import Engine, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.costs import MeterHour
 from app.energy import Reading, summarize
+from app.forecast import site_zone
 from app.live import EventHub, LiveState, utc_now
 from app.models import Command, Device, Measurement, Site
 from app.schemas import (
@@ -205,6 +207,68 @@ class Platform:
                 "state": r.state,
             }
             for r in rows
+        ]
+
+    def hourly_power(
+        self, site_id: UUID, timezone: str, since: datetime
+    ) -> dict[UUID, dict[int, float]]:
+        """Mean power per device per local hour of day (0-23) since `since`."""
+        hour = func.extract("hour", func.timezone(timezone, Measurement.observed_at))
+        with self._session() as session:
+            rows: Any = session.execute(
+                select(Measurement.device_id, hour, func.avg(Measurement.power_w))
+                .where(
+                    Measurement.site_id == site_id,
+                    Measurement.observed_at >= since,
+                    Measurement.power_w.is_not(None),
+                )
+                .group_by(Measurement.device_id, hour)
+            ).all()
+        result: dict[UUID, dict[int, float]] = {}
+        for device_id, local_hour, mean in rows:
+            result.setdefault(device_id, {})[int(local_hour)] = float(mean)
+        return result
+
+    def meter_hours(
+        self, site_id: UUID, device_ids: list[UUID], timezone: str, since: datetime
+    ) -> list[MeterHour]:
+        """Readings of the given meters aggregated per local hour since `since`."""
+        if not device_ids:
+            return []
+        local_hour = func.date_trunc("hour", func.timezone(timezone, Measurement.observed_at))
+        power = func.coalesce(Measurement.power_w, 0.0)
+        with self._session() as session:
+            rows: Any = session.execute(
+                select(
+                    Measurement.device_id,
+                    local_hour,
+                    func.min(Measurement.energy_wh),
+                    func.max(Measurement.energy_wh),
+                    func.avg(func.greatest(power, 0.0)),
+                    func.avg(func.greatest(-power, 0.0)),
+                    func.min(Measurement.observed_at),
+                    func.max(Measurement.observed_at),
+                )
+                .where(
+                    Measurement.site_id == site_id,
+                    Measurement.device_id.in_(device_ids),
+                    Measurement.observed_at >= since,
+                )
+                .group_by(Measurement.device_id, local_hour)
+            ).all()
+        zone = site_zone(timezone)
+        return [
+            MeterHour(
+                device_id=device_id,
+                hour=hour.replace(tzinfo=zone),
+                min_energy_wh=min_energy,
+                max_energy_wh=max_energy,
+                avg_import_w=float(avg_import or 0.0),
+                avg_export_w=float(avg_export or 0.0),
+                first=first,
+                last=last,
+            )
+            for device_id, hour, min_energy, max_energy, avg_import, avg_export, first, last in rows
         ]
 
     # --- telemetry ----------------------------------------------------------------
