@@ -258,11 +258,21 @@ log_dest stdout
 **Всеки път, вместо терминал 1:**
 
 ```powershell
+$srv = "$env:USERPROFILE\optimesh-srv"     # нов терминал: пътищата се задават отново
+$bin = "$srv\env\Library\bin"
+$env:PATH = "$bin;$env:PATH"               # без това mosquitto.exe не намира DLL файловете си (0xC0000135)
 & "$bin\pg_ctl.exe" start -D "$srv\pgdata" -l "$srv\postgres.log" -o "-p 5432 -h 127.0.0.1" -w
 & "$srv\env\Library\sbin\mosquitto.exe" -c "$srv\mosquitto.conf"     # остава да работи
 ```
 
-**Спиране:** `& "$bin\pg_ctl.exe" stop -D "$srv\pgdata"` и затваряне на терминала с Mosquitto. Reset-ът от раздел 5 работи без промяна.
+**Спиране:** затворете терминала с Mosquitto, а PostgreSQL спрете от друг терминал:
+
+```powershell
+$srv = "$env:USERPROFILE\optimesh-srv"
+& "$srv\env\Library\bin\pg_ctl.exe" stop -D "$srv\pgdata"
+```
+
+Reset-ът от раздел 5 работи без промяна.
 
 ## Какво е проверено на 03.10.2026
 
