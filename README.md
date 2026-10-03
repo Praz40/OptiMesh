@@ -8,13 +8,36 @@ Hackathon foundation for a modular energy-management platform. Read [the feasibi
 
 ## What works now
 
-- Starter web app showing live API/database connection status and handling offline states.
-- `GET /health` for API liveness and `GET /ready` for database connectivity.
-- ORM models and an initial migration for sites, devices and measurements in the private `optimesh` schema.
-- Validated [shared telemetry contract](docs/contracts.md), example payload and generated JSON Schema.
-- GitFlow documentation, PR/issue templates, one `.coderabbit.yaml`, CI and GitHub backlog setup.
+The first vertical slice runs end to end, in both directions:
 
-MQTT, WebSockets, authentication, business-data endpoints, commands, optimizer and simulator are future issues. No hosted database or deployment is provisioned by this template.
+```text
+ESP32 / simulator --MQTT--> API --> PostgreSQL
+                             +--WebSocket--> dashboard
+dashboard --REST--> API --MQTT--> device --ack--> API --WebSocket--> dashboard
+```
+
+- **Device contract v1**: telemetry, command and ack over MQTT. The hardware-facing spec is in [docs/contracts.md](docs/contracts.md), with JSON Schemas and examples in `contracts/`.
+- **API**: site/device registry, measurement history, idempotent telemetry ingestion (MQTT or `POST /api/v1/telemetry`), a live WebSocket per site, and commands that are validated against device capabilities. Commands are persisted with the `pending → sent → applied/rejected/expired/failed` lifecycle.
+- **Simulator**: virtual devices for the demo sites, speaking the same MQTT contract as hardware. It can stand in for the ESP32 with `--include-hardware`.
+- **Dashboard**: a Portfolio page (all sites) and a Site page with KPIs, an animated energy flow, a live device list with switch and power-limit controls, and a command log.
+- Demo seed: Home, Workshop (where the physical ESP32 lives) and Office, with fixed UUIDs.
+
+Not built yet: authentication (any client can read and command; **keep the API on localhost or a trusted LAN**), tariffs/costs, forecasts, the optimizer, the scenario game and deployment.
+
+## Run the live demo
+
+Five terminals (or background them), from the repository root:
+
+```sh
+docker compose up -d db mqtt                               # PostgreSQL + Mosquitto
+cd services/api && cp .env.example .env && uv sync --frozen --python 3.12
+uv run --frozen alembic upgrade head && uv run --frozen python -m app.seed
+uv run --frozen uvicorn app.main:app --reload              # API on :8000
+uv run --frozen python -m app.simulator                    # virtual devices (add --hour 12 for midday sun)
+npm ci && npm run dev                                      # dashboard on :3000 (repo root)
+```
+
+Open http://localhost:3000, pick a site and flip a switch. The command log shows `Applied` only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
 ## Quick start
 
@@ -27,7 +50,7 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:3000. The frontend uses server-only `API_URL`, defaulting to http://127.0.0.1:8000. Copy apps/web/.env.example to apps/web/.env.local to override it.
+Open http://localhost:3000. The browser calls the API at `NEXT_PUBLIC_API_URL`, which defaults to port 8000 on the same host. The server-side status check uses `API_URL`. Copy apps/web/.env.example to apps/web/.env.local to override them. To open the dashboard from another device on the LAN, add its origin to the API's `CORS_ORIGINS`.
 
 Backend, in another terminal:
 
@@ -82,7 +105,7 @@ uv run --frozen python ../../scripts/validate_config.py
 
 PostgreSQL integration tests run only when TEST_DATABASE_URL is configured. Use a disposable migrated database, not a hosted production database. CI starts PostgreSQL 17, checks schema drift, upgrades/downgrades/re-upgrades migrations and runs the integration tests without cloud secrets.
 
-Regenerate the shared schema from services/api with `uv run --frozen python -m app.export_contract`. CI compares it to the Pydantic contract.
+Regenerate the shared schemas from services/api with `uv run --frozen python -m app.export_contract`. CI compares them to the Pydantic contracts.
 
 ## GitFlow and committing manually
 
