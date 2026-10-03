@@ -15,10 +15,14 @@ OptiMesh свързва устройствата на един обект чре
 The demo has three acts.
 
 **1. Connect.** Devices (an ESP32 or the device simulator) send telemetry over MQTT in one shared contract, and the dashboard shows every site live over a WebSocket.
-Flip a switch on the dashboard and the command travels back to the device; the log says „Приложено“ only after the device acknowledges it.
+Switch the site to „Асистент“ mode (by default every site opens in „Наблюдение“, which is read-only), flip a switch on the dashboard and the command travels back to the device; the log says „Приложено“ only after the device acknowledges it.
+
+![Workshop in „Асистент“ mode: the Compressor commands are „Приложено“ in the activity log](docs/images/connect.png)
 
 **2. Predict.** For each site the API forecasts the next 24 hours of solar, load and price, prices today's grid energy and proposes commands (`/forecast`, `/costs`, `/recommendations`).
 Every forecast lists its assumptions. The dashboard shows the forecast and today's costs with their assumptions in the „Прогноза“ and „Разходи“ tabs and the recommendations in „Асистент“ mode; the raw responses are in the API docs at http://127.0.0.1:8000/docs.
+
+![The Office „Прогноза“ tab: expected solar and load, hourly prices and the forecast's assumptions](docs/images/predict.png)
 
 **3. Optimize.** In the `/simulator` game you run an office day by hand (10 cars, 3 chargers, a battery and solar), then Autopilot runs the very same day and the results compare cost, peak and cars charged.
 In the terminal, a linear-programming Autopilot plans an office day on real day-ahead prices; its numbers are under [Results](#results).
@@ -128,6 +132,8 @@ The inputs are in [scenario_office.py](services/api/app/sim/scenario_office.py) 
 
 Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/); uv can install Python 3.12. The live demo also needs Docker. Run commands from the Git repository root (the nested OptiMesh folder) unless a step says otherwise.
 
+For the stage, follow the demo runbook in Bulgarian, [docs/DEMO.md](docs/DEMO.md): preparation, start order, the three acts, what to do when something fails, the reset procedure and a setup without Docker.
+
 ### Quick start
 
 The dashboard and the game:
@@ -185,11 +191,11 @@ npm run dev
 
 On Windows, keep `--reload` on the API command: without it uvicorn uses the Proactor event loop, which the MQTT client cannot run on.
 
-Open http://localhost:3000, pick a site and flip a switch. The command log shows „Приложено“ only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
+Open http://localhost:3000, pick a site, choose „Асистент“ in its header (by default every site opens in „Наблюдение“, which is read-only; the choice is remembered per site in the browser) and flip a switch. The command log shows „Приложено“ only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
 To connect the real ESP32 through the Raspberry Pi broker over TLS, see [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md). For Supabase, the Compose API container and migration notes, see [docs/database.md](docs/database.md).
 
-Verification for this README (2026-10-03, Linux, no Docker on the machine): the quick start, the backend without a database and the scenario were run, as were all the checks below. The live demo (`docker compose`, `alembic upgrade head`, `app.seed`, `app.simulator`) was **not run** here; CI runs the migrations and the database tests against PostgreSQL 17 on every pull request.
+Verification for this README (2026-10-03, Linux, no Docker on the machine): the quick start, the backend without a database and the scenario were run, as were all the checks below. The live demo (`docker compose`, `alembic upgrade head`, `app.seed`, `app.simulator`) was **not run** here; CI runs the migrations and the database tests against PostgreSQL 17 on every pull request. Later the same day the live demo was run on Windows 11 with PostgreSQL 17 and Mosquitto 2 started without Docker (same ports and credentials as `compose.yaml`); `docker compose` itself was not run. The checks and their results are in [docs/DEMO.md](docs/DEMO.md).
 
 ## Repository layout
 
