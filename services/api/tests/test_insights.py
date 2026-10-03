@@ -298,6 +298,23 @@ def test_costs_add_up_several_meters_in_the_same_hour() -> None:
     assert [i.import_wh for i in costs.intervals] == [1500]
 
 
+def test_costs_keep_the_two_repeated_hours_apart_when_summer_time_ends() -> None:
+    day = date(2026, 10, 25)
+    summer = local(3, day=day)  # 03:00+03:00 = 00:00Z
+    winter = (summer.astimezone(UTC) + timedelta(hours=1)).astimezone(SOFIA)  # 03:00+02:00
+    meter = uuid4()
+    rows = [
+        meter_hour(device_id=meter, hour=winter, energy=(10, 10, 510, 510)),
+        meter_hour(device_id=meter, hour=summer, energy=(0, 0, 10, 10)),
+    ]
+    costs = costs_for(rows, local(5, day=day))
+    starts = [i.start.astimezone(UTC) for i in costs.intervals]
+    ends = [i.end.astimezone(UTC) for i in costs.intervals]
+    assert starts == [summer.astimezone(UTC), winter.astimezone(UTC)]
+    assert ends == [winter.astimezone(UTC), winter.astimezone(UTC) + timedelta(hours=1)]
+    assert [i.import_wh for i in costs.intervals] == [10, 500]
+
+
 def forecast_of(now: datetime, *hours: tuple[float | None, float | None]) -> ForecastOut:
     """Hand-made forecast from the start of `now`'s local hour: (load_w, solar_w) per hour."""
     start = now.astimezone(SOFIA).replace(minute=0).astimezone(UTC)

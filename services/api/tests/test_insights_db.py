@@ -39,6 +39,7 @@ class Fixture:
     def __init__(self, client: TestClient, engine) -> None:
         self.client = client
         self.engine = engine
+        self.now = NOW  # the platform's and the routes' clock
         self.site_id = uuid4()
         self.meter_id = uuid4()
         self.solar_id = uuid4()
@@ -80,13 +81,17 @@ class Fixture:
 def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[Fixture]:
     assert database_url is not None
     engine = build_engine(database_url)
-    monkeypatch.setattr("app.api.utc_now", lambda: NOW.astimezone(UTC))
     settings = Settings(_env_file=None, database_url=database_url)
     with TestClient(create_app(settings)) as client:
-        platform = client.app.state.platform  # type: ignore[attr-defined]
-        platform._clock = lambda: NOW.astimezone(UTC)  # ingest freshness window
-        platform.live._clock = lambda: NOW.astimezone(UTC)  # online/offline
         fx = Fixture(client, engine)
+
+        def clock() -> datetime:
+            return fx.now.astimezone(UTC)
+
+        monkeypatch.setattr("app.api.utc_now", clock)
+        platform = client.app.state.platform  # type: ignore[attr-defined]
+        platform._clock = clock  # ingest freshness window
+        platform.live._clock = clock  # online/offline
         with Session(engine) as session, session.begin():
             session.add(
                 Site(id=fx.site_id, owner_id=uuid4(), name="Insights", timezone="Europe/Sofia")
@@ -168,6 +173,17 @@ def test_costs_fall_back_to_power_after_a_counter_reset(env: Fixture) -> None:
     env.post(env.meter_id, local(9, 59, 58), power_w=1200, energy_wh=590)
     (hour,) = env.get("costs")["intervals"]
     assert hour["import_wh"] == pytest.approx(1200)  # not max - min = 5600
+
+
+def test_costs_keep_the_two_repeated_hours_apart_when_summer_time_ends(env: Fixture) -> None:
+    env.now = local(5, day=25)  # 2026-10-25: 04:00 summer time becomes 03:00 winter time
+    env.post(env.meter_id, datetime(2026, 10, 25, 0, 10, tzinfo=UTC), power_w=1000)  # 03:10+03
+    env.post(env.meter_id, datetime(2026, 10, 25, 1, 10, tzinfo=UTC), power_w=2000)  # 03:10+02
+    hours = [(i["start"], i["end"]) for i in env.get("costs")["intervals"]]
+    assert hours == [
+        ("2026-10-25T03:00:00+03:00", "2026-10-25T03:00:00+02:00"),
+        ("2026-10-25T03:00:00+02:00", "2026-10-25T04:00:00+02:00"),
+    ]
 
 
 def test_forecast_uses_the_week_of_history_and_current_load(env: Fixture) -> None:

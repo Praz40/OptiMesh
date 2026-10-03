@@ -7,11 +7,11 @@ device is physical or simulated.
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, Float, func, select, text, update
+from sqlalchemy import Engine, Float, extract, func, select, text, update
 from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by, insert
 from sqlalchemy.orm import Session
 
@@ -235,7 +235,10 @@ class Platform:
         """Readings of the given meters aggregated per local hour since `since`."""
         if not device_ids:
             return []
-        local_hour = func.date_trunc("hour", func.timezone(timezone, Measurement.observed_at))
+        local_time = func.timezone(timezone, Measurement.observed_at)
+        local_hour = func.date_trunc("hour", local_time)
+        # Seconds east of UTC: tells the two 03:00 hours apart when summer time ends.
+        utc_offset = extract("epoch", local_time - func.timezone("UTC", Measurement.observed_at))
         power = func.coalesce(Measurement.power_w, 0.0)
         energy_by_time = func.array_agg(
             aggregate_order_by(Measurement.energy_wh, Measurement.observed_at), type_=ARRAY(Float)
@@ -249,6 +252,7 @@ class Platform:
                 select(
                     Measurement.device_id,
                     local_hour,
+                    utc_offset,
                     func.min(Measurement.energy_wh),
                     func.max(Measurement.energy_wh),
                     energy_by_time[1],
@@ -263,13 +267,13 @@ class Platform:
                     Measurement.device_id.in_(device_ids),
                     Measurement.observed_at >= since,
                 )
-                .group_by(Measurement.device_id, local_hour)
+                .group_by(Measurement.device_id, local_hour, utc_offset)
             ).all()
         zone = site_zone(timezone)
         return [
             MeterHour(
                 device_id=device_id,
-                hour=hour.replace(tzinfo=zone),
+                hour=(hour - timedelta(seconds=float(offset))).replace(tzinfo=UTC).astimezone(zone),
                 min_energy_wh=min_energy,
                 max_energy_wh=max_energy,
                 first_energy_wh=first_energy,
@@ -282,6 +286,7 @@ class Platform:
             for (
                 device_id,
                 hour,
+                offset,
                 min_energy,
                 max_energy,
                 first_energy,

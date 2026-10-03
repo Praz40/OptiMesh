@@ -23,7 +23,7 @@ class MeterHour:
     """Aggregated readings of one grid meter in one local hour."""
 
     device_id: UUID
-    hour: datetime  # local, timezone-aware, on the hour
+    hour: datetime  # start of the local hour, timezone-aware (fold set when summer time ends)
     min_energy_wh: float | None
     max_energy_wh: float | None
     first_energy_wh: float | None  # counter at the hour's first reading that has one
@@ -60,21 +60,23 @@ def build_costs(
     forecast: ForecastOut | None,
 ) -> CostsOut:
     zone = site_zone(site.timezone)
+    # Keyed in UTC: in one zone, 03:00 summer time and 03:00 winter time compare equal.
     per_hour: dict[datetime, list[float]] = defaultdict(lambda: [0.0, 0.0])
     for row in rows:
         import_wh, export_wh = hour_energy(row)
-        per_hour[row.hour][0] += import_wh
-        per_hour[row.hour][1] += export_wh
+        per_hour[row.hour.astimezone(UTC)][0] += import_wh
+        per_hour[row.hour.astimezone(UTC)][1] += export_wh
 
     intervals = []
     for hour in sorted(per_hour):
         import_wh, export_wh = per_hour[hour]
-        import_price = tariff.import_price(hour.astimezone(zone).hour)
+        start = hour.astimezone(zone)
+        import_price = tariff.import_price(start.hour)
         export_price = tariff.export_price
         intervals.append(
             CostInterval(
-                start=hour,
-                end=hour + timedelta(hours=1),
+                start=start,
+                end=(hour + timedelta(hours=1)).astimezone(zone),
                 import_wh=import_wh,
                 export_wh=export_wh,
                 import_price=import_price,
