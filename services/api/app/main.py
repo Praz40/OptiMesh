@@ -2,13 +2,16 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.auth import JwtVerifier
 from app.config import Settings
 from app.database import build_engine
+from app.registry import router
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +32,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.add_middleware(
         CORSMiddleware,
         allow_origins=config.cors_origins,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+    application.state.engine = engine
+    application.state.token_verifier = (
+        JwtVerifier(str(config.supabase_url)) if config.supabase_url else None
+    )
+    application.include_router(router)
+
+    @application.exception_handler(SQLAlchemyError)
+    async def database_error(_: Request, _error: SQLAlchemyError) -> JSONResponse:
+        logger.warning("Database request failed")
+        return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
 
     @application.get("/health")
     def health() -> dict[str, str]:

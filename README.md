@@ -10,11 +10,13 @@ Hackathon foundation for a modular energy-management platform. Read [the feasibi
 
 - Starter web app showing live API/database connection status and handling offline states.
 - `GET /health` for API liveness and `GET /ready` for database connectivity.
-- ORM models and an initial migration for sites, devices and measurements in the private `optimesh` schema.
+- ORM models and Alembic migrations for sites, devices and measurements in the private `optimesh` schema.
+- Authenticated site/device registry, device provisioning with capabilities and configured operating limits, and paginated UTC measurement history.
+- REST bearer-token verification using Supabase Auth public signing keys and owner-based site authorization.
 - Validated [shared telemetry contract](docs/contracts.md), example payload and generated JSON Schema.
 - GitFlow documentation, PR/issue templates, one `.coderabbit.yaml`, CI and GitHub backlog setup.
 
-MQTT, WebSockets, authentication, business-data endpoints, commands, optimizer and simulator are future issues. No hosted database or deployment is provisioned by this template.
+MQTT, WebSockets, login UI, membership/role authorization, commands, optimizer and simulator are future issues. No hosted database or deployment is provisioned by this template.
 
 ## Quick start
 
@@ -54,9 +56,52 @@ uv run --frozen alembic upgrade head
 uv run --frozen alembic check
 ```
 
-The `optimesh` schema must stay outside Supabase's exposed Data API schemas. Public schema access is revoked. Supabase Auth and application tenant authorization are a P0 issue; the migration's privileged DB role bypasses RLS, so enabling RLS alone would not replace backend authorization.
+The `optimesh` schema must stay outside Supabase's exposed Data API schemas. Public schema access is revoked. REST JWT verification and ownership checks are implemented; broader Supabase Auth and membership/role authorization remain issue #3; the migration's privileged DB role bypasses RLS, so enabling RLS alone would not replace backend authorization.
 
 Compose also provides an optional API container: `docker compose --profile api up --build -d`. Apply migrations separately with `docker compose --profile tools run --rm migrate`.
+
+## Registry and measurement history
+
+Set `SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co` in services/api/.env to the same project as the database. The backend verifies access tokens against that project's public signing keys, requiring ES256 or RS256, a valid signature, the project issuer, the `authenticated` audience and role, an unexpired token and a UUID subject. Legacy HS256 tokens are rejected. No service-role key or shared JWT signing secret is needed. Missing configuration or an unavailable signing-key provider fails closed with 503; missing or invalid credentials receive 401.
+
+Run `uv sync --frozen` and `uv run --frozen alembic upgrade head` from services/api for your development database. Revision 0002 adds configured device limits and extends history indexes with the measurement ID. Existing rows receive empty limits; no device-specific bounds are invented.
+
+Send a Supabase user access token as `Authorization: Bearer <access_token>`, or use **Authorize** in http://127.0.0.1:8000/docs. The REST authorization policy is ownership: the verified token subject must match `Site.owner_id`. Memberships, role delegation and login UI remain part of issue #3.
+
+| Method | Endpoint | Behavior |
+| --- | --- | --- |
+| GET | /sites | List the current user's sites |
+| POST | /sites | Create a site owned by the current user |
+| GET | /sites/{site_id} | Read an owned site |
+| GET | /sites/{site_id}/devices | List its devices |
+| POST | /sites/{site_id}/devices | Provision a device |
+| GET | /sites/{site_id}/devices/{device_id} | Read a device under that site |
+| GET | /sites/{site_id}/measurements | Read bounded measurement history |
+
+Create a site with `{"name":"Home","timezone":"Europe/Sofia","currency":"EUR"}`. Names are trimmed and bounded, timezones use IANA names and currency is a three-letter uppercase code. Provision a device with, for example:
+
+```json
+{
+  "name": "Demo battery",
+  "kind": "battery",
+  "source": "simulator",
+  "capabilities": ["measure_power", "battery_soc"],
+  "operating_limits": {
+    "min_power_w": -500,
+    "max_power_w": 2000,
+    "min_soc_pct": 20,
+    "max_soc_pct": 90
+  }
+}
+```
+
+The limits above are example configuration values, not hardware specifications. Bounds are optional; power is finite and signed in W, and SOC is finite and between 0 and 100 percent. Each configured minimum must not exceed its maximum. Unknown fields, duplicate/unknown capabilities and invalid sources are rejected. Capabilities reuse the existing telemetry contract enum.
+
+History requires timezone-aware `start` and `end` query parameters, normalizes them to UTC and uses the half-open interval `[start, end)`. The maximum window is 30 days. `limit` defaults to 100 and accepts 1?500; `device_id` optionally narrows the query to a device belonging to the site. For example: `/sites/{site_id}/measurements?start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z&limit=100`.
+
+Responses contain `items` and `next_cursor`. Follow a non-null cursor using the same site, device and time bounds; the page size may change. Ordering is ascending by `observed_at` and then `id`, so equal timestamps paginate without duplicates. Cursors are validated pagination positions, not authorization credentials or a snapshot of concurrent ingestion.
+
+Authorized empty collections return 200 with an empty list (or empty history page). Missing, foreign and site/device-mismatched resources return 404 to avoid exposing another user's data. Invalid input returns 422; database failures return 503 without internal details.
 
 ## Checks
 
@@ -86,20 +131,18 @@ Regenerate the shared schema from services/api with `uv run --frozen python -m a
 
 ## GitFlow and committing manually
 
-Changes are prepared on local `feature/project-template`, based on local `develop`. The template source changes are left uncommitted for you; this agent has made no commits or pushes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and required CI checks.
-
-With your own Git identity configured, review and commit:
+Issue #4 is developed on `feature/registry`, based on `develop`. Review your changes before committing; keep local environment files and tools out of Git.
 
 ```sh
+git status --short
 git diff
-git add .
+git add README.md services/api/.env.example services/api/app services/api/tests services/api/alembic/versions/0002_registry.py services/api/pyproject.toml services/api/uv.lock
 git diff --cached --stat
-git commit -m "chore: bootstrap OptiMesh hackathon foundation"
-git push -u origin develop
-git push -u origin feature/project-template
+git commit -m "feat(api): add site/device registry and measurement history"
+git push -u origin feature/registry
 ```
 
-Open a PR from feature/project-template into develop. Publish a release to main through release/* when ready. The local portable tools used to verify this template are ignored under .codex-tools; they are not project dependencies.
+Open a PR from feature/registry into develop and link issue #4. Merge after CI passes. Publish a release to main through release/* when ready. Portable development tools under .codex-tools are ignored and are not project dependencies.
 
 ## GitHub issues, labels and milestones
 

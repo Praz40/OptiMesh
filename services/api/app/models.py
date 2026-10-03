@@ -36,6 +36,7 @@ class Device(Base):
     __table_args__ = (
         UniqueConstraint("id", "site_id", name="uq_devices_id_site"),
         CheckConstraint("source IN ('hardware', 'simulator')", name="valid_source"),
+        CheckConstraint("jsonb_typeof(operating_limits) = 'object'", name="limits_object"),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     site_id: Mapped[UUID] = mapped_column(
@@ -46,6 +47,9 @@ class Device(Base):
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     capabilities: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
+    )
+    operating_limits: Mapped[dict[str, float]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -72,8 +76,8 @@ class Measurement(Base):
         ),
         CheckConstraint("energy_wh >= 0 AND energy_wh < 'Infinity'::float8", name="valid_energy"),
         CheckConstraint("soc_pct >= 0 AND soc_pct <= 100", name="valid_soc"),
-        Index("ix_measurements_device_time", "device_id", "observed_at"),
-        Index("ix_measurements_site_time", "site_id", "observed_at"),
+        Index("ix_measurements_device_time", "device_id", "observed_at", "id"),
+        Index("ix_measurements_site_time", "site_id", "observed_at", "id"),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     site_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
