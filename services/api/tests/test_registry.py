@@ -1,10 +1,16 @@
+import os
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select
+from fastapi.testclient import TestClient
+from sqlalchemy import delete, select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
+from app.config import Settings
+from app.database import build_engine
+from app.main import create_app
 from app.models import Device, Site
 
 pytestmark = pytest.mark.integration
@@ -333,3 +339,59 @@ def test_real_request_sessions_commit_and_persist_across_requests(signed_headers
             db.execute(delete(Site).where(Site.owner_id.in_(users)))
             db.commit()
         engine.dispose()
+
+
+@pytest.fixture
+def committed_client(signed_headers, users):
+    """The real app on TEST_DATABASE_URL: requests commit, so /api/v1 sees their rows."""
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    engine = build_engine(url)
+    try:
+        with TestClient(
+            create_app(
+                Settings(_env_file=None, database_url=url, supabase_url="https://auth.example.test")
+            )
+        ) as client:
+            yield client
+    finally:
+        with Session(engine) as db:
+            db.execute(delete(Site).where(Site.owner_id.in_(users)))
+            db.commit()
+        engine.dispose()
+
+
+def test_created_site_is_in_the_live_site_list_at_once(committed_client, signed_headers, users):
+    created = committed_client.post(
+        "/sites", headers=signed_headers(users[0]), json={"name": "Fresh"}
+    )
+    assert created.status_code == 201
+    listed = committed_client.get("/api/v1/sites")
+    assert listed.status_code == 200
+    assert created.json()["id"] in [site["id"] for site in listed.json()]
+
+
+def test_device_added_after_a_snapshot_is_in_the_next_snapshot(
+    committed_client, signed_headers, users
+):
+    headers = signed_headers(users[0])
+    site = committed_client.post("/sites", headers=headers, json={"name": "Fresh"})
+    assert site.status_code == 201
+    site_id = site.json()["id"]
+    before = committed_client.get(f"/api/v1/sites/{site_id}")
+    assert before.status_code == 200
+    assert before.json()["devices"] == []
+    device = committed_client.post(
+        f"/sites/{site_id}/devices",
+        headers=headers,
+        json={"name": "Meter", "kind": "grid_meter", "source": "hardware"},
+    )
+    assert device.status_code == 201
+    after = committed_client.get(f"/api/v1/sites/{site_id}")
+    assert after.status_code == 200
+    assert [item["id"] for item in after.json()["devices"]] == [device.json()["id"]]
+    assert [(item["device_id"], item["online"]) for item in after.json()["live"]] == [
+        (device.json()["id"], False)
+    ]
+    assert after.json()["site"]["summary"]["devices_total"] == 1
