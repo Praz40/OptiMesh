@@ -157,11 +157,21 @@ def test_reliable_client_compatibility(settings):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("payload", [b"not json", b"{}", b"[]", b"\xff", b"x" * 4097])
-def test_rejected_payload_does_not_expose_content(bridge, settings, payload, caplog):
+@pytest.mark.parametrize(
+    "payload,error",
+    [
+        (b"not json", "JSONDecodeError"),
+        (b"{}", "ValidationError"),
+        (b"[]", "ValidationError"),
+        (b"\xff", "UnicodeDecodeError"),
+        (b"x" * 4097, "ValueError"),
+    ],
+)
+def test_rejected_payload_does_not_expose_content(bridge, settings, payload, error, caplog):
     asyncio.run(bridge.handle(settings.mqtt_telemetry_topic, payload))
     bridge._platform.ingest_telemetry.assert_not_called()
     assert "Rejected invalid MQTT message" in caplog.text
+    assert f"on {settings.mqtt_telemetry_topic} ({error})" in caplog.text
     assert "input_value" not in caplog.text
 
 
@@ -270,7 +280,7 @@ def test_duplicate_does_not_update_live_or_broadcast(settings):
 
 
 @pytest.mark.parametrize("failure", ["transient", "permanent", "duplicate", "suback", "qos0"])
-def test_run_ack_after_processing_and_reconnect(bridge, settings, monkeypatch, failure):
+def test_run_ack_after_processing_and_reconnect(bridge, settings, monkeypatch, failure, caplog):
     events = []
     clients = []
     delays = []
@@ -353,6 +363,14 @@ def test_run_ack_after_processing_and_reconnect(bridge, settings, monkeypatch, f
         assert events.index("persist") < events.index("ack")
     else:
         assert "ack" not in events
+    reason = {
+        "transient": "MQTT database processing failed",
+        "suback": "Broker did not grant QoS 1 subscription",
+    }.get(failure, "disconnect")
+    assert f"MQTT disconnected; retrying in 1s (MqttError: {reason})" in caplog.text
+    assert "DB failure" not in caplog.text
+    assert settings.mqtt_username.get_secret_value() not in caplog.text
+    assert settings.mqtt_password.get_secret_value() not in caplog.text
 
 
 def test_status_alias_disabled():
