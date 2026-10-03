@@ -363,7 +363,7 @@ npm ci && npm run dev          # после http://localhost:3000/simulator
 
 ### 6.1 Сценарият `app/sim`: един офисен ден
 
-Изход от командата (измерено). Пусната е на 2026-10-03 около 19:50 UTC, на клона на PR „test(sim): reproduce the comparison numbers used in the presentation“. Този PR добави последните четири реда (раздел 6.3). Първите три реда са същите като на commit-а в заглавието; различават се само милисекундите.
+Изход от командата (измерено). Пусната е на 2026-10-03 около 19:40 UTC, на клона на PR „test(sim): reproduce the comparison numbers used in the presentation“. Този PR добави последните четири реда (раздел 6.3). Първите три реда са същите като на commit-а в заглавието; различават се само милисекундите.
 
 ```text
 $ cd services/api && uv run --frozen python -m app.sim.scenario_office
