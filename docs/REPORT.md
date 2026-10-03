@@ -278,7 +278,7 @@ npm run dev
 
 - `--include-hardware` кара симулатора да играе и ролята на ESP32. С `--hour 12` слънцето е като по обед (README).
 - **Windows:** README казва да оставите `--reload` на командата за API. Без него uvicorn ползва Proactor event loop, на който MQTT клиентът не работи. README не дава Windows вариант на `cp`; в PowerShell `cp` е псевдоним на `Copy-Item`.
-- **Реалният ESP32** минава само през брокера на Raspberry Pi с TLS. API трябва да е настроен в `services/api/.env` по раздела „MQTT over TLS“ в README, а UUID на платката трябва да са в базата (раздел 4). За този път README дава отделна команда за Windows, с една инстанция и без `--reload`: **[не е пускано]**
+- **Реалният ESP32** минава само през брокера на Raspberry Pi с TLS. API трябва да е настроен в `services/api/.env` по раздела „MQTT over TLS“ в [docs/raspberry-pi-mqtt.md](raspberry-pi-mqtt.md) (преди беше в README), а UUID на платката трябва да са в базата (раздел 4). За този път същият файл дава отделна команда за Windows, с една инстанция и без `--reload`: **[не е пускано]**
 
   ```powershell
   python -c "import asyncio,uvicorn; asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy()); uvicorn.run('app.main:app',loop='asyncio',workers=1)"
