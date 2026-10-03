@@ -136,7 +136,7 @@ npm run dev
 
 Open http://localhost:3000/simulator. The game needs no backend; without one, the sidebar shows "API unreachable" and the Portfolio page cannot load sites.
 
-The browser calls the API at `NEXT_PUBLIC_API_URL`, which defaults to port 8000 on the same host. The server-side status check uses `API_URL`. Copy apps/web/.env.example to apps/web/.env.local to override them. To open the dashboard from another device on the LAN, add its origin to the API's `CORS_ORIGINS`.
+The browser calls the API at `NEXT_PUBLIC_API_URL`, which defaults to port 8000 on the same host. The server-side status check uses `API_URL`. Copy apps/web/.env.example to apps/web/.env.local to override them. The dashboard dev server already listens on the LAN, but the API listens only on 127.0.0.1. To open the dashboard from another device on a trusted LAN, start the API with `--host 0.0.0.0` and add the dashboard's origin (for example `http://<laptop-ip>:3000`) to the API's `CORS_ORIGINS`. Do this only on a trusted network: `/api/v1` has no authentication.
 
 The backend, in another terminal:
 
