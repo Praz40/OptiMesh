@@ -1,5 +1,13 @@
 # Frontend, simulator and insights: handoff
 
+> **Status note, 03.10.2026.** The document below is kept as it was written. This note says what has changed since.
+>
+> - Branch `claude/focused-ptolemy-g292a4` was merged into `develop` through PR #28 (merge commit `396fa46`) and then deleted. `feature/forecast-tariff` was merged through PR #30.
+> - `develop` has the live slice from #21: PR #23 brought `main` into `develop`. The second half of item 5 in "Next steps" (`main` or `develop`) no longer applies; PRs go into `develop` ([CONTRIBUTING.md](../CONTRIBUTING.md)).
+> - Test counts on `develop` at `26507b4`: `npm test` 150 passed in 19 files; `pytest` 237 passed and 45 skipped without `TEST_DATABASE_URL`, and 307 passed in CI with PostgreSQL. The 74 and 52 below are from the time of writing.
+> - The game's results in section 2, checked against `apps/web/src/sim/*.test.ts`. Covered by tests: Autopilot charges 10/10 cars on time and keeps import at or below 22 kW (seeds 7, 1, 42); the simple rules peak above 28.6 kW, which is 1.3 × 22 kW (same seeds); Autopilot's battery-adjusted cost is lower than the simple rules' (no amount is checked); the simple rules charge 7/10 cars on time (seed 7). Not covered by any test: the simple rules' "32–35 kW" peak and the "9–11 % lower" cost.
+> - No test validates the game's telemetry export against `app.schemas.Telemetry`. `telemetry.test.ts` checks, in TypeScript only, one message per device per interval (60 × 7 = 420 for the Office scenario), the allowed keys, `version`, `site_id`, a UUID v4 `message_id`, the timestamp format and non-empty metrics. The "420/420 messages" in section 2 is not reproduced by any command or test in the repository.
+
 State of the web app, the scenario simulator and the started forecast/cost/recommendation work, for whoever continues it. Everything below is on branch `claude/focused-ptolemy-g292a4`, one commit per area.
 
 | Commit | Issue | Status |

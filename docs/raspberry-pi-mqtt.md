@@ -40,7 +40,11 @@ TLS is enabled by default; these variables configure the real broker:
 Use assigned canonical UUIDs in the topic. The currently verified topic is
 `optimesh/v1/sites/0e708814-7d96-4d44-8c6b-6e841346bd34/devices/42c485b1-f4f0-436b-ae5c-f86b7285055b/telemetry`.
 These IDs must already belong to the same device/site registry pair in the target
-database. Broker identities and ACLs authorize MQTT publications/subscriptions;
+database. This pair is not in `app/seed.py`, so it must be registered in the target
+database, or the board flashed with the seeded "ESP32 demo load" identifiers from
+`app/seed.py` (site `5e000000-0000-4000-8000-000000000002`, device
+`de000000-0000-4000-8000-000000002003`); otherwise the API rejects the telemetry as an
+unknown device. Broker identities and ACLs authorize MQTT publications/subscriptions;
 payload UUIDs alone are not credentials. The backend identity needs read access
 to this telemetry topic and its sibling `ack` topic, plus write access to the
 `command` topic when commands are used. Never reuse the ESP32 publish identity for the subscriber.
@@ -72,8 +76,9 @@ The `(device_id, message_id)` unique constraint preserves the first reading on r
 aiomqtt uses Paho with manual acknowledgements, MQTT 3.1.1 and a persistent session
 for the configured stable client ID. PUBACK follows committed ingestion or duplicate
 handling; permanently invalid messages and deliveries without a configured database are consumed.
-Unexpected processing bugs are retried up to three times per topic/payload digest,
-then consumed so they cannot block later telemetry; the retry cache is bounded.
+Unexpected processing bugs get at most three attempts per topic/payload digest (the
+first attempt and two retries); after the third failure the message is consumed so it
+cannot block later telemetry. The retry cache is bounded.
 Transient database failures remain unacknowledged and reconnect
 with exponential backoff (1–30s), without PUBACK, allowing broker replay. Both the
 telemetry and ack subscriptions must receive QoS 1 grants before status is connected.
