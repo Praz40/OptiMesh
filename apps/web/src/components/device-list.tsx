@@ -45,7 +45,7 @@ function SetpointForm({
   return (
     <form className="setpoint" onSubmit={submit}>
       <label>
-        <span className="sr-only">Power limit for {device.name} in kW</span>
+        <span className="sr-only">Лимит на мощността за {device.name} в kW</span>
         <input
           type="number"
           inputMode="decimal"
@@ -57,10 +57,10 @@ function SetpointForm({
           onChange={(event) => setValue(event.target.value)}
           disabled={disabled}
         />
-        <span aria-hidden="true">kW limit</span>
+        <span aria-hidden="true">kW лимит</span>
       </label>
       <button type="submit" className="button-small" disabled={disabled || value === ""}>
-        Set
+        Задай
       </button>
     </form>
   );
@@ -87,7 +87,7 @@ function DeviceRow({
   const canSwitch = device.capabilities.includes("switch");
   const canSetpoint = device.capabilities.includes("power_setpoint");
   const disabled = busy || !live.online || readOnly;
-  const disabledReason = readOnly ? "Monitor mode is read-only" : !live.online ? "Device is offline" : undefined;
+  const disabledReason = readOnly ? "Режим „Наблюдение“ е само за четене" : !live.online ? "Устройството не е на линия" : undefined;
   const on = live.state?.on;
   const fresh = freshness(live, now);
   const Icon = KIND_ICONS[device.kind];
@@ -98,7 +98,7 @@ function DeviceRow({
     try {
       await send(device.id, body);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Command failed");
+      setError(reason instanceof Error ? reason.message : "Командата не успя");
     } finally {
       setSubmitting(false);
     }
@@ -107,8 +107,8 @@ function DeviceRow({
   const metrics = live.metrics;
   const detail = [
     KIND_LABELS[device.kind],
-    metrics?.soc_pct != null ? `${formatPercent(metrics.soc_pct)} charged` : null,
-    live.state?.setpoint_w != null ? `limit ${formatPower(live.state.setpoint_w)}` : null,
+    metrics?.soc_pct != null ? `${formatPercent(metrics.soc_pct)} заряд` : null,
+    live.state?.setpoint_w != null ? `лимит ${formatPower(live.state.setpoint_w)}` : null,
   ].filter(Boolean);
 
   return (
@@ -119,7 +119,7 @@ function DeviceRow({
       <div className="device-name">
         <p>
           {device.name}
-          {device.source === "simulator" && <span className="tag">Simulated</span>}
+          {device.source === "simulator" && <span className="tag">Симулирано</span>}
         </p>
         <p className="device-detail">
           <span className="status-dot" data-tone={fresh.tone} aria-hidden="true" />
@@ -135,7 +135,7 @@ function DeviceRow({
             type="button"
             role="switch"
             aria-checked={on === true}
-            aria-label={`${device.name} power`}
+            aria-label={`Захранване на ${device.name}`}
             className="toggle"
             disabled={disabled}
             title={disabledReason}
@@ -181,7 +181,7 @@ export function DeviceList({
   const now = useNow();
   const byId = new Map(live.map((item) => [item.device_id, item]));
   const shown = filter ? devices.filter(filter) : devices;
-  if (shown.length === 0) return <p className="muted">No devices to show.</p>;
+  if (shown.length === 0) return <p className="muted">Няма устройства за показване.</p>;
   return (
     <ul className="device-list">
       {shown.map((device) => {

@@ -11,16 +11,16 @@ import { useSites } from "@/hooks/use-sites";
 import { formatAgo } from "@/lib/energy";
 
 const CONNECTION: Record<Connection, { text: string; tone?: "good" | "warn" | "bad" }> = {
-  connecting: { text: "Connecting…" },
-  live: { text: "Live", tone: "good" },
-  reconnecting: { text: "Reconnecting…", tone: "warn" },
-  "not-found": { text: "Unavailable", tone: "bad" },
+  connecting: { text: "Свързване…" },
+  live: { text: "На живо", tone: "good" },
+  reconnecting: { text: "Повторно свързване…", tone: "warn" },
+  "not-found": { text: "Недостъпен", tone: "bad" },
 };
 
 export const SITE_TABS = [
-  { slug: "", label: "Overview" },
-  { slug: "devices", label: "Devices" },
-  { slug: "activity", label: "Activity" },
+  { slug: "", label: "Преглед" },
+  { slug: "devices", label: "Устройства" },
+  { slug: "activity", label: "Активност" },
   { slug: "forecast", label: "Прогноза" },
   { slug: "costs", label: "Разходи" },
 ] as const;
@@ -31,9 +31,9 @@ function SiteSwitcher({ siteId, tab }: { siteId: string; tab: string }) {
   if (sites.status !== "ready" || sites.sites.length < 2) return null;
   return (
     <label className="site-switch">
-      <span aria-hidden="true">Site</span>
+      <span aria-hidden="true">Обект</span>
       <select
-        aria-label="Switch site"
+        aria-label="Смяна на обекта"
         value={siteId}
         onChange={(event) => router.push(`/sites/${event.target.value}${tab ? `/${tab}` : ""}`)}
       >
@@ -54,7 +54,7 @@ function LivePill({ connection, updatedAt }: { connection: Connection; updatedAt
     <p className="pill" aria-live="polite">
       <span className="status-dot" data-tone={tone} aria-hidden="true" />
       {text}
-      {connection === "live" && updatedAt && <span className="muted">updated {formatAgo(updatedAt, now)}</span>}
+      {connection === "live" && updatedAt && <span className="muted">обновено {formatAgo(updatedAt, now)}</span>}
     </p>
   );
 }
@@ -69,10 +69,10 @@ export function SiteFrame({ children }: { children: ReactNode }) {
   if (connection === "not-found") {
     return (
       <section className="empty-state">
-        <h1>Site not found</h1>
-        <p>It may have been removed, or the link is wrong.</p>
+        <h1>Обектът не е намерен</h1>
+        <p>Може да е премахнат или връзката да е грешна.</p>
         <Link className="button" href="/">
-          Back to all sites
+          Към всички обекти
         </Link>
       </section>
     );
@@ -81,7 +81,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
   if (!snapshot) {
     return (
       <section className="empty-state" aria-busy="true">
-        <p>{connection === "reconnecting" ? "Cannot reach the OptiMesh API. Retrying…" : "Loading live data…"}</p>
+        <p>{connection === "reconnecting" ? "Няма връзка с OptiMesh API. Нов опит…" : "Зареждане на данните на живо…"}</p>
       </section>
     );
   }
@@ -91,8 +91,8 @@ export function SiteFrame({ children }: { children: ReactNode }) {
     <>
       <div className="page-head">
         <div>
-          <nav className="eyebrow" aria-label="Breadcrumb">
-            <Link href="/">Portfolio</Link>
+          <nav className="eyebrow" aria-label="Навигационна пътека">
+            <Link href="/">Портфолио</Link>
             <span aria-hidden="true">/</span>
             <span>{site.timezone.replace("_", " ")}</span>
           </nav>
@@ -106,10 +106,10 @@ export function SiteFrame({ children }: { children: ReactNode }) {
       </div>
       {connection === "reconnecting" && (
         <p className="notice" role="status">
-          Connection to the API was lost. Showing the last known values while reconnecting.
+          Връзката с API прекъсна. Показани са последните известни стойности, докато връзката се възстанови.
         </p>
       )}
-      <nav className="tabs" aria-label={`${site.name} sections`}>
+      <nav className="tabs" aria-label={`Раздели на обекта ${site.name}`}>
         {SITE_TABS.map((item) => (
           <Link
             key={item.slug}

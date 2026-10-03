@@ -1,5 +1,5 @@
-// Bulgarian formatting (decimal comma, 24-hour clock) for the Bulgarian screens.
-// The older English screens keep lib/energy.ts until they are translated.
+// Bulgarian formatting (decimal comma, 24-hour clock) for every screen.
+// lib/energy.ts formats power, energy and percentages through these helpers.
 
 const LOCALE = "bg-BG";
 

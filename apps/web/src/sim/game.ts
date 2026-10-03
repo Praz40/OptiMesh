@@ -19,7 +19,7 @@ export type Game = {
 };
 
 export const SPEEDS = [
-  { label: "0.5×", ms: 3000 },
+  { label: "0,5×", ms: 3000 },
   { label: "1×", ms: 1500 },
   { label: "2×", ms: 750 },
   { label: "4×", ms: 300 },

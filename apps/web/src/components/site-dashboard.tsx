@@ -37,14 +37,14 @@ function trendSeries(points: TrendPoint[], devices: Device[]): ChartSeries[] {
   const has = (kind: DeviceKind) => devices.some((device) => device.kind === kind);
   const series: ChartSeries[] = [];
   if (has("solar_inverter")) {
-    series.push({ key: "solar", label: "Solar", tone: "solar", style: "area", values: points.map((p) => p.solar) });
+    series.push({ key: "solar", label: "Слънце", tone: "solar", style: "area", values: points.map((p) => p.solar) });
   }
-  series.push({ key: "consumption", label: "Consumption", tone: "consumption", values: points.map((p) => p.consumption) });
+  series.push({ key: "consumption", label: "Консумация", tone: "consumption", values: points.map((p) => p.consumption) });
   if (has("grid_meter")) {
-    series.push({ key: "grid", label: "Grid (+ import / − export)", tone: "grid", values: points.map((p) => p.grid) });
+    series.push({ key: "grid", label: "Мрежа (+ взета / − отдадена)", tone: "grid", values: points.map((p) => p.grid) });
   }
   if (has("battery")) {
-    series.push({ key: "battery", label: "Battery (+ charge)", tone: "battery", values: points.map((p) => p.battery) });
+    series.push({ key: "battery", label: "Батерия (+ зареждане)", tone: "battery", values: points.map((p) => p.battery) });
   }
   return series;
 }
@@ -54,14 +54,14 @@ function PowerTrend({ points, devices, backfilled }: { points: TrendPoint[]; dev
   const x = useMemo(() => points.map((p) => p.t), [points]);
   return (
     <TimeChart
-      title="Site power over the last 30 minutes"
+      title="Мощност на обекта за последните 30 минути"
       x={x}
       series={series}
       height={250}
       formatY={formatKw}
       formatX={(t) => formatClock(t)}
       formatXLong={(t) => formatClock(t, true)}
-      emptyText={backfilled ? "Collecting readings…" : "Loading recent history…"}
+      emptyText={backfilled ? "Събиране на измервания…" : "Зареждане на последната история…"}
     />
   );
 }
@@ -91,15 +91,15 @@ export function SiteDashboard() {
 
         <section className="panel" aria-labelledby="flow-title">
           <div className="panel-head">
-            <h2 id="flow-title">Energy flow</h2>
+            <h2 id="flow-title">Поток на енергията</h2>
             <span className="muted">
-              {summary.devices_online} of {summary.devices_total} devices reporting
+              {summary.devices_online} от {summary.devices_total} устройства {summary.devices_online === 1 ? "изпраща" : "изпращат"} данни
             </span>
           </div>
           <EnergyFlow summary={summary} present={presentFlows(devices)} />
           {summary.unmeasured_w !== null && summary.unmeasured_w > 0 && (
             <p className="footnote">
-              Site loads include {formatPower(summary.unmeasured_w)} not measured by an individual device.
+              Товарите на обекта включват {formatPower(summary.unmeasured_w)}, които не се измерват от отделно устройство.
             </p>
           )}
         </section>
@@ -107,15 +107,15 @@ export function SiteDashboard() {
         <div className="stack">
           <section className="panel" aria-labelledby="now-title">
             <div className="panel-head">
-              <h2 id="now-title">Right now</h2>
+              <h2 id="now-title">В момента</h2>
             </div>
             <Insights items={liveInsights(summary, devices, live)} />
           </section>
           <section className="panel" aria-labelledby="recent-title">
             <div className="panel-head">
-              <h2 id="recent-title">Recent activity</h2>
+              <h2 id="recent-title">Последна активност</h2>
               <Link className="muted" href={`/sites/${siteId}/activity`}>
-                View all
+                Виж всичко
               </Link>
             </div>
             <CommandLog commands={recent} devices={devices} />
@@ -124,8 +124,8 @@ export function SiteDashboard() {
 
         <section className="panel span-all" aria-labelledby="trend-title">
           <div className="panel-head">
-            <h2 id="trend-title">Power, last 30 minutes</h2>
-            <span className="muted">10 s averages · live</span>
+            <h2 id="trend-title">Мощност за последните 30 минути</h2>
+            <span className="muted">средно за 10 сек · на живо</span>
           </div>
           <PowerTrend points={trend} devices={devices} backfilled={backfilled} />
         </section>
@@ -133,8 +133,8 @@ export function SiteDashboard() {
         {devices.some(flexible) && (
           <section className="panel span-all" aria-labelledby="controls-title">
             <div className="panel-head">
-              <h2 id="controls-title">Flexible loads</h2>
-              <span className="muted">Changes apply only after the device confirms them.</span>
+              <h2 id="controls-title">Гъвкави товари</h2>
+              <span className="muted">Промените важат едва след като устройството ги потвърди.</span>
             </div>
             <DeviceList
               devices={devices}

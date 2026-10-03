@@ -199,13 +199,19 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    cache: "no-store",
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      cache: "no-store",
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch (error) {
+    // fetch rejects with a TypeError when the API cannot be reached; its message is the browser's, in English.
+    throw error instanceof TypeError ? new TypeError("няма връзка с API") : error;
+  }
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    let message = `Заявката не успя (${response.status})`;
     try {
       const body = (await response.json()) as { detail?: unknown };
       if (typeof body.detail === "string") message = body.detail;

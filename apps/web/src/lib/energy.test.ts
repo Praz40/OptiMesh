@@ -19,8 +19,8 @@ const base: SiteSummary = {
 describe("formatPower", () => {
   it("uses W below 1 kW and kW above", () => {
     expect(formatPower(850.4)).toBe("850 W");
-    expect(formatPower(1234)).toBe("1.2 kW");
-    expect(formatPower(-4500)).toBe("-4.5 kW");
+    expect(formatPower(1234)).toBe("1,2 kW");
+    expect(formatPower(-4500)).toBe("-4,5 kW");
     expect(formatPower(28_328)).toBe("28 kW");
   });
 
@@ -98,23 +98,23 @@ describe("freshness", () => {
   };
 
   it("is good for recent readings and warns when readings run late", () => {
-    expect(freshness(live, now)).toEqual({ tone: "good", label: "Updated just now" });
+    expect(freshness(live, now)).toEqual({ tone: "good", label: "Обновено току-що" });
     expect(freshness({ ...live, received_at: "2026-10-03T10:00:18Z" }, now).tone).toBe("warn");
   });
 
   it("reports offline devices with when they were last seen", () => {
     expect(freshness({ ...live, online: false, received_at: "2026-10-03T09:58:30Z" }, now)).toEqual({
       tone: "bad",
-      label: "Offline · last seen 2 min ago",
+      label: "Не е на линия · последни данни преди 2 мин",
     });
-    expect(freshness({ ...live, online: false, received_at: null }, now).label).toBe("Never connected");
+    expect(freshness({ ...live, online: false, received_at: null }, now).label).toBe("Никога не се е свързвало");
   });
 });
 
 describe("siteHealth", () => {
   it("summarizes how many devices report", () => {
     expect(siteHealth({ ...base, devices_online: 3, devices_total: 3 }).tone).toBe("good");
-    expect(siteHealth({ ...base, devices_online: 2, devices_total: 3 }).label).toBe("1 of 3 devices offline");
+    expect(siteHealth({ ...base, devices_online: 2, devices_total: 3 }).label).toBe("1 от 3 устройства не е на линия");
     expect(siteHealth({ ...base, devices_online: 0, devices_total: 3 }).tone).toBe("bad");
   });
 });
@@ -122,10 +122,10 @@ describe("siteHealth", () => {
 describe("formatAgo", () => {
   const now = Date.parse("2026-10-03T12:00:00Z");
   it("uses the largest sensible unit", () => {
-    expect(formatAgo("2026-10-03T11:59:59Z", now)).toBe("just now");
-    expect(formatAgo("2026-10-03T11:59:15Z", now)).toBe("45 s ago");
-    expect(formatAgo("2026-10-03T11:30:00Z", now)).toBe("30 min ago");
-    expect(formatAgo("2026-10-03T09:00:00Z", now)).toBe("3 h ago");
-    expect(formatAgo(null, now)).toBe("never");
+    expect(formatAgo("2026-10-03T11:59:59Z", now)).toBe("току-що");
+    expect(formatAgo("2026-10-03T11:59:15Z", now)).toBe("преди 45 сек");
+    expect(formatAgo("2026-10-03T11:30:00Z", now)).toBe("преди 30 мин");
+    expect(formatAgo("2026-10-03T09:00:00Z", now)).toBe("преди 3 ч");
+    expect(formatAgo(null, now)).toBe("никога");
   });
 });

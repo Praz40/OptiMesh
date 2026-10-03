@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { AlertIcon, BatteryIcon, CheckIcon, GridIcon, LeafIcon, SolarIcon } from "@/components/icons";
 import type { Device, DeviceLive, SiteSummary } from "@/lib/api";
-import { formatPercent, formatPower, gridDirection, supplyMix } from "@/lib/energy";
+import { devicesCount, formatPercent, formatPower, gridDirection, supplyMix } from "@/lib/energy";
 
 type Insight = { key: string; icon: ReactNode; tone?: string; title: string; detail: string };
 
-const SOURCE_LABEL = { solar: "solar", battery: "the battery", grid: "the grid" } as const;
+const SOURCE_LABEL = { solar: "слънцето", battery: "батерията", grid: "мрежата" } as const;
 
 /** Plain-language reading of the live balance: where power comes from, where it goes, what needs attention. */
 export function liveInsights(summary: SiteSummary, devices: Device[], live: DeviceLive[]): Insight[] {
@@ -16,13 +16,13 @@ export function liveInsights(summary: SiteSummary, devices: Device[], live: Devi
   if (mix.length > 0 && consumption) {
     const parts = mix
       .sort((a, b) => b.watts - a.watts)
-      .map((share) => `${formatPercent((share.watts / consumption) * 100)} from ${SOURCE_LABEL[share.source]}`);
+      .map((share) => `${formatPercent((share.watts / consumption) * 100)} от ${SOURCE_LABEL[share.source]}`);
     const lead = mix[0];
     insights.push({
       key: "mix",
       icon: lead.source === "solar" ? <LeafIcon /> : lead.source === "battery" ? <BatteryIcon /> : <GridIcon />,
       tone: lead.source === "solar" ? "solar" : lead.source,
-      title: `${formatPower(consumption)} in use, mostly from ${SOURCE_LABEL[lead.source]}`,
+      title: `Консумация ${formatPower(consumption)}, най-вече от ${SOURCE_LABEL[lead.source]}`,
       detail: `${parts.join(", ")}.`,
     });
   }
@@ -33,16 +33,16 @@ export function liveInsights(summary: SiteSummary, devices: Device[], live: Devi
       key: "export",
       icon: <SolarIcon />,
       tone: "solar",
-      title: `Exporting ${formatPower(-summary.grid_w)} of surplus`,
-      detail: "Flexible loads such as EV charging could use this instead of selling it.",
+      title: `${formatPower(-summary.grid_w)} излишък се отдава към мрежата`,
+      detail: "Гъвкави товари, като зареждането на коли, могат да го използват, вместо той да се отдава към мрежата.",
     });
   } else if (grid === "importing" && summary.solar_w !== null && summary.solar_w < 50) {
     insights.push({
       key: "import",
       icon: <GridIcon />,
       tone: "grid",
-      title: `Importing ${formatPower(summary.grid_w)} with no solar`,
-      detail: "Deferring flexible loads to sunnier or cheaper hours would cut this.",
+      title: `${formatPower(summary.grid_w)} се взема от мрежата без слънце`,
+      detail: "Ако гъвкавите товари се отложат за по-слънчеви или по-евтини часове, това ще намалее.",
     });
   }
 
@@ -52,23 +52,23 @@ export function liveInsights(summary: SiteSummary, devices: Device[], live: Devi
     insights.push({
       key: "offline",
       icon: <AlertIcon />,
-      title: `${down.length} device${down.length === 1 ? "" : "s"} not reporting`,
-      detail: `${down.map((device) => device.name).join(", ")}. Totals that depend on ${down.length === 1 ? "it" : "them"} are incomplete.`,
+      title: `${devicesCount(down.length)} не ${down.length === 1 ? "изпраща" : "изпращат"} данни`,
+      detail: `${down.map((device) => device.name).join(", ")}. Сумите, които зависят от ${down.length === 1 ? "него" : "тях"}, са непълни.`,
     });
   } else if (devices.length > 0) {
     insights.push({
       key: "healthy",
       icon: <CheckIcon />,
       tone: "battery",
-      title: "All devices reporting",
-      detail: `${devices.length} device${devices.length === 1 ? "" : "s"} sent fresh readings in the last 15 s.`,
+      title: "Всички устройства изпращат данни",
+      detail: `${devicesCount(devices.length)} ${devices.length === 1 ? "изпрати" : "изпратиха"} нови измервания през последните 15 секунди.`,
     });
   }
   return insights;
 }
 
 export function Insights({ items }: { items: Insight[] }) {
-  if (items.length === 0) return <p className="muted">Waiting for enough readings to describe this site.</p>;
+  if (items.length === 0) return <p className="muted">Изчакване на достатъчно измервания, за да се опише обектът.</p>;
   return (
     <ul className="insights">
       {items.map((item) => (

@@ -5,8 +5,8 @@ export default function Home() {
     <>
       <div className="page-head">
         <div>
-          <h1>Portfolio</h1>
-          <p className="muted">Live energy across every site you manage.</p>
+          <h1>Портфолио</h1>
+          <p className="muted">Енергията на живо във всички ваши обекти.</p>
         </div>
       </div>
       <Portfolio />

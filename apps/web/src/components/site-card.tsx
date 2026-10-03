@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Site } from "@/lib/api";
 import { formatPercent, formatPower, gridDirection, powerParts, siteHealth, supplyMix } from "@/lib/energy";
 
-const SOURCE_LABELS = { solar: "Solar", battery: "Battery", grid: "Grid" } as const;
+const SOURCE_LABELS = { solar: "Слънце", battery: "Батерия", grid: "Мрежа" } as const;
 
 function SupplyBar({ site }: { site: Site }) {
   const mix = supplyMix(site.summary);
@@ -10,7 +10,7 @@ function SupplyBar({ site }: { site: Site }) {
   if (total <= 0) return <div className="balance-bar" aria-hidden="true" />;
   const label = mix.map((share) => `${SOURCE_LABELS[share.source]} ${formatPercent((share.watts / total) * 100)}`).join(", ");
   return (
-    <div className="balance-bar" role="img" aria-label={`Supplied by ${label}`} title={label}>
+    <div className="balance-bar" role="img" aria-label={`Източници: ${label}`} title={label}>
       {mix.map((share) => (
         <span key={share.source} data-tone={share.source} style={{ flexGrow: share.watts }} />
       ))}
@@ -37,25 +37,25 @@ export function SiteCard({ site }: { site: Site }) {
             {value}
             {unit && <span className="metric-unit">{unit}</span>}
           </span>
-          <span className="metric-label">consumption now</span>
+          <span className="metric-label">консумация в момента</span>
         </p>
       </div>
       <SupplyBar site={site} />
       <dl className="site-card-stats">
         <div data-tone="solar">
-          <dt>Solar</dt>
+          <dt>Слънце</dt>
           <dd>{formatPower(summary.solar_w)}</dd>
         </div>
         <div data-tone="grid">
-          <dt>{grid === "exporting" ? "Exporting" : grid === "importing" ? "Importing" : "Grid"}</dt>
+          <dt>{grid === "exporting" ? "Към мрежата" : grid === "importing" ? "От мрежата" : "Мрежа"}</dt>
           <dd>{formatPower(summary.grid_w === null ? null : Math.abs(summary.grid_w))}</dd>
         </div>
         <div data-tone="battery">
-          <dt>Battery</dt>
+          <dt>Батерия</dt>
           <dd>{formatPercent(summary.battery_soc_pct)}</dd>
         </div>
         <div data-tone="ev">
-          <dt>EV</dt>
+          <dt>Зареждане</dt>
           <dd>{formatPower(summary.ev_w)}</dd>
         </div>
       </dl>
