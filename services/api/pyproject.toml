@@ -10,6 +10,7 @@ dependencies = [
   "alembic>=1.13,<2",
   "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.5,<3",
+  "aiomqtt>=2.3,<3",
   "pyjwt[crypto]>=2.10,<3",
   "tzdata>=2025.2",
 ]

@@ -13,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.schemas import Capability
+from app.schemas import Capability, DeviceKind, DeviceLimits
 
 Name = Annotated[str, Field(min_length=1, max_length=120)]
 
@@ -37,31 +37,14 @@ class SiteCreate(InputModel):
         return value
 
 
-class OperatingLimits(InputModel):
-    """Optional configured bounds; an omitted bound means it has not been configured."""
-
-    min_power_w: FiniteFloat | None = Field(default=None, description="Signed minimum power in W")
-    max_power_w: FiniteFloat | None = Field(default=None, description="Signed maximum power in W")
-    min_soc_pct: Annotated[FiniteFloat, Field(ge=0, le=100)] | None = None
-    max_soc_pct: Annotated[FiniteFloat, Field(ge=0, le=100)] | None = None
-
-    @model_validator(mode="after")
-    def ordered_limits(self) -> "OperatingLimits":
-        for lower, upper in (
-            (self.min_power_w, self.max_power_w),
-            (self.min_soc_pct, self.max_soc_pct),
-        ):
-            if lower is not None and upper is not None and lower > upper:
-                raise ValueError("Minimum operating limit must not exceed maximum")
-        return self
-
-
 class DeviceCreate(InputModel):
+    """Uses the live slice's DeviceKind and DeviceLimits, so /api/v1 can always read the row."""
+
     name: Name
-    kind: Annotated[str, Field(min_length=1, max_length=40)]
+    kind: DeviceKind
     source: Literal["hardware", "simulator"]
     capabilities: list[Capability] = Field(default_factory=list, max_length=len(Capability))
-    operating_limits: OperatingLimits = Field(default_factory=OperatingLimits)
+    limits: DeviceLimits = Field(default_factory=DeviceLimits)
 
     @field_validator("capabilities")
     @classmethod
@@ -69,6 +52,13 @@ class DeviceCreate(InputModel):
         if len(values) != len(set(values)):
             raise ValueError("Capabilities must be unique")
         return values
+
+    @model_validator(mode="after")
+    def ordered_limits(self) -> "DeviceCreate":
+        lower, upper = self.limits.min_power_w, self.limits.max_power_w
+        if lower is not None and upper is not None and lower > upper:
+            raise ValueError("Minimum operating limit must not exceed maximum")
+        return self
 
 
 class UTCModel(BaseModel):
@@ -98,10 +88,10 @@ class DeviceRead(ORMRead):
     id: UUID
     site_id: UUID
     name: str
-    kind: str
+    kind: DeviceKind
     source: Literal["hardware", "simulator"]
     capabilities: list[Capability]
-    operating_limits: OperatingLimits
+    limits: DeviceLimits
     created_at: AwareDatetime
 
 

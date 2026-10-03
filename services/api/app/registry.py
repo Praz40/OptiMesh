@@ -1,3 +1,5 @@
+"""Authenticated provisioning and history. Site and device reads are served by /api/v1."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -51,14 +53,6 @@ def owned_device(session: Session, principal: Principal, site_id: UUID, device_i
     return device
 
 
-@router.get("", response_model=list[SiteRead])
-def list_sites(principal: PrincipalDep, session: SessionDep) -> list[SiteRead]:
-    rows = session.scalars(
-        select(Site).where(Site.owner_id == principal.user_id).order_by(Site.created_at, Site.id)
-    )
-    return [SiteRead.model_validate(row) for row in rows]
-
-
 @router.post("", response_model=SiteRead, status_code=201)
 def create_site(payload: SiteCreate, principal: PrincipalDep, session: SessionDep) -> SiteRead:
     site = Site(owner_id=principal.user_id, **payload.model_dump())
@@ -67,23 +61,6 @@ def create_site(payload: SiteCreate, principal: PrincipalDep, session: SessionDe
     result = SiteRead.model_validate(site)
     session.commit()
     return result
-
-
-@router.get("/{site_id}", response_model=SiteRead)
-def get_site(site_id: UUID, principal: PrincipalDep, session: SessionDep) -> SiteRead:
-    return SiteRead.model_validate(owned_site(session, principal, site_id))
-
-
-@router.get("/{site_id}/devices", response_model=list[DeviceRead], response_model_exclude_none=True)
-def list_devices(site_id: UUID, principal: PrincipalDep, session: SessionDep) -> list[DeviceRead]:
-    owned_site(session, principal, site_id)
-    rows = session.scalars(
-        select(Device)
-        .join(Site, Device.site_id == Site.id)
-        .where(Site.owner_id == principal.user_id, Device.site_id == site_id)
-        .order_by(Device.created_at, Device.id)
-    )
-    return [DeviceRead.model_validate(row) for row in rows]
 
 
 @router.post(
@@ -99,26 +76,16 @@ def create_device(
     device = Device(
         site_id=site_id,
         name=payload.name,
-        kind=payload.kind,
+        kind=payload.kind.value,
         source=payload.source,
         capabilities=[capability.value for capability in payload.capabilities],
-        operating_limits=payload.operating_limits.model_dump(exclude_none=True),
+        limits=payload.limits.model_dump(exclude_none=True),
     )
     session.add(device)
     session.flush()
     result = DeviceRead.model_validate(device)
     session.commit()
     return result
-
-
-@router.get(
-    "/{site_id}/devices/{device_id}", response_model=DeviceRead, response_model_exclude_none=True
-)
-def get_device(
-    site_id: UUID, device_id: UUID, principal: PrincipalDep, session: SessionDep
-) -> DeviceRead:
-    owned_site(session, principal, site_id)
-    return DeviceRead.model_validate(owned_device(session, principal, site_id, device_id))
 
 
 @router.get("/{site_id}/measurements", response_model=HistoryPage, tags=["History"])

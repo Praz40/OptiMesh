@@ -1,7 +1,41 @@
 {
   "$defs": {
+    "DeviceState": {
+      "additionalProperties": false,
+      "description": "Controllable state as the device actually applied it.",
+      "properties": {
+        "on": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "On"
+        },
+        "setpoint_w": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Setpoint W"
+        }
+      },
+      "title": "DeviceState",
+      "type": "object"
+    },
     "Metrics": {
       "additionalProperties": false,
+      "description": "Power sign convention depends on the device kind; see docs/contracts.md.",
       "properties": {
         "power_w": {
           "anyOf": [
@@ -41,6 +75,31 @@
           ],
           "default": null,
           "title": "Soc Pct"
+        },
+        "voltage_v": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voltage V"
+        },
+        "current_a": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current A"
         }
       },
       "title": "Metrics",
@@ -76,6 +135,17 @@
     },
     "metrics": {
       "$ref": "#/$defs/Metrics"
+    },
+    "state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeviceState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

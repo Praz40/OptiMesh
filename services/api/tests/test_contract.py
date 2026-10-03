@@ -6,7 +6,8 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import Telemetry
+from app.export_contract import CONTRACTS
+from app.schemas import CommandAck, CommandMessage, Telemetry
 
 
 def payload() -> dict:
@@ -60,6 +61,39 @@ def test_invalid_envelopes_are_rejected(field: str, value: object) -> None:
         Telemetry.model_validate({**payload(), field: value})
 
 
-def test_exported_contract_matches_python_schema() -> None:
-    target = Path(__file__).resolve().parents[3] / "contracts" / "telemetry-v1.schema.json"
-    assert json.loads(target.read_text(encoding="utf-8")) == Telemetry.model_json_schema()
+@pytest.mark.parametrize("name", sorted(CONTRACTS))
+def test_exported_contracts_match_python_schemas(name: str) -> None:
+    target = Path(__file__).resolve().parents[3] / "contracts" / name
+    assert json.loads(target.read_text(encoding="utf-8")) == CONTRACTS[name].model_json_schema()
+
+
+def test_example_payloads_are_valid() -> None:
+    contracts = Path(__file__).resolve().parents[3] / "contracts"
+    Telemetry.model_validate_json((contracts / "telemetry-v1.example.json").read_text())
+    CommandMessage.model_validate_json((contracts / "command-v1.example.json").read_text())
+    CommandAck.model_validate_json((contracts / "ack-v1.example.json").read_text())
+
+
+def test_state_and_electrical_metrics_are_optional_extensions() -> None:
+    telemetry = Telemetry.model_validate(
+        {
+            **payload(),
+            "metrics": {"power_w": 55.2, "voltage_v": 229.8, "current_a": 0.24},
+            "state": {"on": True},
+        }
+    )
+    assert telemetry.state is not None and telemetry.state.on is True
+    with pytest.raises(ValidationError):
+        Telemetry.model_validate({**payload(), "state": {"brightness": 3}})
+
+
+def test_ack_rejects_unknown_status() -> None:
+    with pytest.raises(ValidationError):
+        CommandAck.model_validate(
+            {
+                "version": 1,
+                "command_id": str(uuid4()),
+                "status": "done",
+                "observed_at": "2026-10-02T20:00:00Z",
+            }
+        )

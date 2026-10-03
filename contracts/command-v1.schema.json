@@ -1,0 +1,54 @@
+{
+  "$defs": {
+    "CommandType": {
+      "enum": [
+        "switch",
+        "power_setpoint"
+      ],
+      "title": "CommandType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Published to .../command. Devices must answer with a CommandAck.",
+  "properties": {
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "command_id": {
+      "format": "uuid",
+      "title": "Command Id",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "type": {
+      "$ref": "#/$defs/CommandType"
+    },
+    "params": {
+      "additionalProperties": true,
+      "title": "Params",
+      "type": "object"
+    }
+  },
+  "required": [
+    "version",
+    "command_id",
+    "issued_at",
+    "expires_at",
+    "type",
+    "params"
+  ],
+  "title": "CommandMessage",
+  "type": "object"
+}

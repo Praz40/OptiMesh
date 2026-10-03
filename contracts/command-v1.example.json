@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "command_id": "44444444-4444-4444-8444-444444444444",
+  "issued_at": "2026-10-02T18:00:00Z",
+  "expires_at": "2026-10-02T18:00:15Z",
+  "type": "switch",
+  "params": {
+    "on": false
+  }
+}
