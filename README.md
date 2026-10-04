@@ -8,9 +8,9 @@ OptiMesh is an energy autopilot for one site (a home, a workshop or an office): 
 
 This README is in English apart from the short Bulgarian summary below; the demo runbook [docs/DEMO.md](docs/DEMO.md) and the project report [docs/REPORT.md](docs/REPORT.md) are in Bulgarian.
 
-## Накратко (на български)
+## Short summary
 
-OptiMesh свързва устройствата на един обект чрез общ MQTT договор, показва живите им измервания в табло и изпраща команди, които стават „Приложено“ едва след потвърждение от устройството. Бекендът прогнозира слънцето, товара и цената за следващите 24 часа, а Autopilot (засега само в симулация) решава кога да се зареждат колите и батерията. В един симулиран офисен ден с борсовите цени за България от 30.09.2026 Autopilot сваля разхода от 27,77 на 18,24 EUR и зарежда навреме и 10-те коли; това е симулация с допуснати товари и коли, а не измерване на реален обект.
+OptiMesh connects the devices on a site through a shared MQTT contract, shows their live readings on a dashboard, and sends commands that are marked „Приложено“ (Applied) only after the device confirms them. The backend forecasts solar output, load and price for the next 24 hours, and Autopilot (for now in simulation only) decides when to charge the cars and the battery. On one simulated office day with the Bulgarian day-ahead prices for 30 September 2026, Autopilot cuts the cost from 27.77 to 18.24 EUR and still charges all 10 cars on time. This is a simulation with assumed loads and cars, not a measurement on a real site.
 
 ## What it does
 
