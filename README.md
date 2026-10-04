@@ -6,7 +6,9 @@ OptiMesh is an energy autopilot for one site (a home, a workshop or an office): 
 
 [![CI](https://github.com/Praz40/OptiMesh/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Praz40/OptiMesh/actions/workflows/ci.yml?query=branch%3Amain)
 
-## Накратко
+This README is in English apart from the short Bulgarian summary below; the demo runbook [docs/DEMO.md](docs/DEMO.md) and the project report [docs/REPORT.md](docs/REPORT.md) are in Bulgarian.
+
+## Накратко (на български)
 
 OptiMesh свързва устройствата на един обект чрез общ MQTT договор, показва живите им измервания в табло и изпраща команди, които стават „Приложено“ едва след потвърждение от устройството. Бекендът прогнозира слънцето, товара и цената за следващите 24 часа, а Autopilot (засега само в симулация) решава кога да се зареждат колите и батерията. В един симулиран офисен ден с борсовите цени за България от 30.09.2026 Autopilot сваля разхода от 27,77 на 18,24 EUR и зарежда навреме и 10-те коли; това е симулация с допуснати товари и коли, а не измерване на реален обект.
 
@@ -58,10 +60,10 @@ Steps 1–4 carry measurements to the dashboard; steps 5–10 carry a command ba
 - **Dashboard** (`apps/web`): Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, vitest.
 - **API** (`services/api`): Python 3.12, FastAPI, SQLAlchemy, Alembic, psycopg, Pydantic, aiomqtt, PyJWT; dependencies managed with uv.
 - **Autopilot** (`services/api/app/sim`): NumPy and SciPy `linprog` with the HiGHS solver.
-- **Database**: PostgreSQL 17 locally (Docker Compose) and in CI; Supabase when hosted.
+- **Database**: PostgreSQL 17 locally (Docker Compose, or the setup in [appendix A of docs/DEMO.md](docs/DEMO.md#приложение-а-без-docker)) and in CI; Supabase when hosted.
 - **Broker**: Mosquitto 2, anonymous and bound to localhost for development; TLS with backend credentials on a Raspberry Pi for hardware.
 - **Firmware** (`firmware/esp32-telemetry`): ESP-IDF through PlatformIO (`espressif32@6.9.0`), MQTT over TLS.
-- **CI**: GitHub Actions, `frontend` and `backend` jobs on every pull request into `develop` or `main`.
+- **CI**: GitHub Actions, `frontend` and `backend` jobs on every push to `main`, `develop`, `feature/**`, `release/**` and `hotfix/**`, and on every pull request into `develop`, `main`, `release/**` and `hotfix/**`.
 
 ## What works now
 
@@ -148,7 +150,7 @@ The inputs are in [scenario_office.py](services/api/app/sim/scenario_office.py) 
 
 ## Run it
 
-Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/); uv can install Python 3.12. The live demo also needs Docker. Run commands from the Git repository root (the nested OptiMesh folder) unless a step says otherwise.
+Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/); uv can install Python 3.12. The live demo also needs PostgreSQL 17 and Mosquitto 2; Docker is one way to get them, not a requirement (see [Live demo](#live-demo)). Run commands from the Git repository root (the nested OptiMesh folder) unless a step says otherwise.
 
 For the stage, follow the demo runbook in Bulgarian, [docs/DEMO.md](docs/DEMO.md): preparation, start order, the three acts, what to do when something fails, the reset procedure and a setup without Docker.
 
@@ -184,15 +186,21 @@ uv run --frozen python -m app.sim.scenario_office
 
 ### Live demo
 
-Each service runs in its own terminal:
+The live demo needs PostgreSQL 17 on 127.0.0.1:5432 and Mosquitto 2 on 127.0.0.1:1883, with the database, user and password from `compose.yaml`. There are two ways to start them; use one, not both, because they take the same ports:
+
+1. **Without Docker, on Windows: the setup the live demo has been run on.** Follow [appendix A of docs/DEMO.md](docs/DEMO.md#приложение-а-без-docker). It installs PostgreSQL 17 and Mosquitto 2 from conda-forge with micromamba into your user folder, needs neither Docker nor administrator rights, and then starts both from one terminal each time.
+2. **Docker Compose: not run on any machine yet.** `docker compose up -d --wait db mqtt` from the repository root. Neither the team nor CI has run it, so treat it as untested.
+
+Then each service runs in its own terminal:
 
 ```sh
-# 1. Repository root: PostgreSQL and Mosquitto (returns once they are started)
-docker compose up -d db mqtt
+# 1. Repository root: PostgreSQL and Mosquitto, either as in appendix A of docs/DEMO.md
+#    or with Docker Compose (not run yet; --wait returns once the database is healthy)
+docker compose up -d --wait db mqtt
 
 # 2. services/api: configure, migrate and seed, then the API on :8000 (keeps running)
 cd services/api
-cp .env.example .env
+cp .env.example .env                 # only if there is no .env yet; see the note below
 uv sync --frozen --python 3.12
 uv run --frozen alembic upgrade head
 uv run --frozen python -m app.seed
@@ -207,13 +215,21 @@ npm ci
 npm run dev
 ```
 
+An existing `services/api/.env` needs `MQTT_HOST`, `MQTT_PORT` and `MQTT_TLS` together, as in `.env.example`: without `MQTT_TLS=false` the API refuses to start, and without `MQTT_PORT` it looks for the local broker on port 8883 instead of 1883.
+
 On Windows, keep `--reload` on the API command: without it uvicorn uses the Proactor event loop, which the MQTT client cannot run on.
 
 Open http://localhost:3000, pick a site, choose „Асистент“ in its header (by default every site opens in „Наблюдение“, which is read-only; the choice is remembered per site in the browser) and flip a switch. The command log shows „Приложено“ only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
-To connect the real ESP32 through the Raspberry Pi broker over TLS, see [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md). For Supabase, the Compose API container and migration notes, see [docs/database.md](docs/database.md).
+To connect the real ESP32 through the Raspberry Pi broker over TLS, see [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md). For Supabase, the Compose API container (not run yet either) and migration notes, see [docs/database.md](docs/database.md).
 
-Verification for this README (2026-10-03, Linux, no Docker on the machine): the quick start, the backend without a database and the scenario were run, as were all the checks below. The live demo (`docker compose`, `alembic upgrade head`, `app.seed`, `app.simulator`) was **not run** here; CI runs the migrations and the database tests against PostgreSQL 17 on every pull request. Later the same day the live demo was run on Windows 11 with PostgreSQL 17 and Mosquitto 2 started without Docker (same ports and credentials as `compose.yaml`); `docker compose` itself was not run. The checks and their results are in [docs/DEMO.md](docs/DEMO.md).
+What has been run, as of 2026-10-04:
+
+- **Linux, 2026-10-03** (no Docker or PostgreSQL on that machine, PR #33): the quick start, the backend without a database, the scenario and all the checks below.
+- **Windows 11, 2026-10-03** (`develop` `e5cf9ed`, PostgreSQL 17 and Mosquitto 2 from appendix A of docs/DEMO.md): the live demo from database to dashboard, with the clicks in a real browser (Chromium through Playwright). Sign-in and device onboarding against a real Supabase project followed on 2026-10-04 (PR #44). The results table is at the end of [docs/DEMO.md](docs/DEMO.md).
+- **Windows 11, 2026-10-04** (`develop` `28ec011`, the same setup): the stack started again; `/api/v1/status` returned `{"mqtt":"connected"}` and the dashboard showed Home 6/6, Office 7/7 and Workshop 3/4 devices online.
+- **This README, Windows 11, 2026-10-04** (on top of `develop` `290dba1`): all the checks below (the database tests skipped without `TEST_DATABASE_URL`), and every relative link and image points to an existing file.
+- **Docker Compose has not been run on any machine.** CI does not use it either: it starts its own PostgreSQL 17 service and runs the checks below, the migration round trip and the database tests on every pull request.
 
 ## Repository layout
 
@@ -283,15 +299,15 @@ Branch `feature/<slug>` from `develop`, one issue per branch, and open a PR into
 | GitHub user | Built |
 | --- | --- |
 | [Praz40](https://github.com/Praz40) (Dimitar)| Project foundation: FastAPI and Next.js skeleton, models and migration `0001`, CI, backlog script, CodeRabbit config (#1). Site/device registry, measurement history and Supabase JWT verification for `/sites` (#20). Repository owner. |
-| [unkownshadows](https://github.com/unkownshadows) (Yordan)| Opened and merged the live vertical slice: command and ack contracts, MQTT bridge, WebSocket, commands, dashboard, seed and device simulator. App shell and dashboard, the `/simulator` game, the Windows event-loop fix for the simulator, and the tariff, forecast, cost and recommendation modules (five commits in #28). |
-| [DGtao13](https://github.com/DGtao13) (Daniel)| ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). The OptiMesh Game, the offline Godot exhibition game in `game/` (imported with its history from DGtao13/OptiMesh-Game). |
-| [GamingSimpwa](https://github.com/GamingSimpwa) (Stoyan)| `develop` synced with `main` and one migration chain, CLAUDE.md and CONTRIBUTING.md (#23). Scenario simulator and LP Autopilot (#24). Verified TLS for the MQTT bridge (#25). Integration of the dashboard and game branch (#28). MQTT disconnect reasons in the logs (#29). Forecast, costs and recommendations routes (#30). Project report (#31). |
+| [unkownshadows](https://github.com/unkownshadows) (Yordan)| Live vertical slice: MQTT bridge, WebSocket, acknowledged commands, dashboard, seed and device simulator (#21). App shell, the `/simulator` game, the Windows event-loop fix and the tariff, forecast, cost and recommendation modules (five commits in #28). Demo runbook and screenshots (#39), the presentation numbers as a test (#40), docs corrections (#41), sign-in, „Моите обекти“ and device onboarding (#44). |
+| [DGtao13](https://github.com/DGtao13) (Daniel)| ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). The OptiMesh Game in `game/` (imported with its history in #45). |
+| [GamingSimpwa](https://github.com/GamingSimpwa) (Stoyan)| One migration chain, CLAUDE.md and CONTRIBUTING.md (#23). Scenario simulator and LP Autopilot (#24). MQTT TLS and disconnect reasons (#25, #29). Dashboard and game integration (#28). Forecast, costs and recommendations: API (#30) and tabs (#34). „Наблюдение“ and „Асистент“ (#35). Bulgarian interface (#38). My-sites API (#42). Report (#31, #43, #46), README (#33), release v0.1.0 (#36), game import (#45). |
 
 ## Limitations
 
 - **No authentication on `/api/v1`, the WebSocket or commands** (issue #3): any client that reaches the API can read every site and send commands. Keep the API on localhost or a trusted LAN. Only the `/sites` routes verify a Supabase token.
 - **Signing in does not hide other users' sites yet** (issue #3): „Портфолио“, the sidebar's site list and `/api/v1` still show every site to everyone, signed in or not. Only „Моите обекти“ and the `/sites` routes are per user.
-- Monitor and Assist (#10) are a dashboard setting kept in the browser: „Наблюдение“ blocks commands in the dashboard only, and the API accepts commands from any client until #3 adds authentication.
+- „Наблюдение“ and „Асистент“ (Monitor and Assist, shipped in #35) are a dashboard setting kept in the browser: „Наблюдение“ blocks commands in the dashboard only, and the API accepts commands from any client until #3 adds authentication.
 - Autopilot runs only in `app/sim` and the `/simulator` game (the Godot game in `game/` has its own reference strategy); it does not control real devices. `/recommendations` proposes commands and sends nothing.
 - The scenario simulator (`app/sim`) has no API or screen. The `/simulator` game uses its own TypeScript simulation with a rule-based Autopilot.
 - The ESP32 firmware publishes telemetry for a constant simulated load only: no command subscription, acknowledgement or GPIO control (#9). The device simulator shows the return path.
