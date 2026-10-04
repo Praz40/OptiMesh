@@ -10,11 +10,43 @@ Send a Supabase user access token as `Authorization: Bearer <access_token>`, or 
 
 | Method | Endpoint | Behavior |
 | --- | --- | --- |
+| GET | /sites | List the current user's sites |
 | POST | /sites | Create a site owned by the current user |
+| GET | /sites/{site_id}/devices | List the devices of an owned site |
 | POST | /sites/{site_id}/devices | Provision a device |
 | GET | /sites/{site_id}/measurements | Read bounded measurement history |
 
-Site and device reads are served by `GET /api/v1/sites` and `GET /api/v1/sites/{site_id}`, which are not authenticated yet.
+`GET /sites` and `GET /sites/{site_id}/devices` return only the current user's sites and devices. Live readings, the energy summary and commands stay under `/api/v1` (`GET /api/v1/sites`, `GET /api/v1/sites/{site_id}`), which is not authenticated yet and lists every site.
+
+`GET /sites` answers 200 with a JSON array of the sites the user owns, newest first (`created_at` descending, then `id`), or `[]` when there are none. Each item has the same shape as the `POST /sites` response:
+
+```json
+{
+  "id": "5e000000-0000-4000-8000-000000000002",
+  "owner_id": "0a000000-0000-4000-8000-000000000001",
+  "name": "Office",
+  "timezone": "Europe/Sofia",
+  "currency": "EUR",
+  "created_at": "2026-10-01T10:00:00Z"
+}
+```
+
+`GET /sites/{site_id}/devices` answers 200 with a JSON array of the site's devices ordered by `name`, then `id` (the `/api/v1` snapshot also orders by name), or `[]` for an owned site without devices. Each item has the same shape as the `POST /sites/{site_id}/devices` response; `limits` lists only the configured bounds and is `{}` when none are set:
+
+```json
+{
+  "id": "de000000-0000-4000-8000-000000000002",
+  "site_id": "5e000000-0000-4000-8000-000000000001",
+  "name": "Battery",
+  "kind": "battery",
+  "source": "simulator",
+  "capabilities": ["measure_power", "battery_soc", "power_setpoint"],
+  "limits": {"min_power_w": 100.0, "max_power_w": 2000.0, "capacity_wh": 10000.0},
+  "created_at": "2026-10-01T09:00:00Z"
+}
+```
+
+Both lists are complete, without pagination. Another user's site and an unknown site return 404.
 
 Create a site with `{"name":"Home","timezone":"Europe/Sofia","currency":"EUR"}`. Names are trimmed and bounded, timezones use IANA names and currency is a three-letter uppercase code. Provision a device with, for example:
 
@@ -32,7 +64,7 @@ Create a site with `{"name":"Home","timezone":"Europe/Sofia","currency":"EUR"}`.
 }
 ```
 
-The limits above are example configuration values, not hardware specifications. `kind`, `capabilities` and `limits` use the device contract types in `app/schemas.py` (`DeviceKind`, `Capability`, `DeviceLimits`), so every provisioned device is readable by `/api/v1`. Bounds are optional; power bounds are finite, non-negative W, `capacity_wh` is positive, and a configured minimum must not exceed its maximum. Unknown fields, duplicate/unknown capabilities, unknown kinds and invalid sources are rejected. A device provisioned while the API is running appears in `/api/v1` snapshots after its first telemetry or an API restart.
+The limits above are example configuration values, not hardware specifications. `kind`, `capabilities` and `limits` use the device contract types in `app/schemas.py` (`DeviceKind`, `Capability`, `DeviceLimits`), so every provisioned device is readable by `/api/v1`. Bounds are optional; power bounds are finite, non-negative W, `capacity_wh` is positive, and a configured minimum must not exceed its maximum. Unknown fields, duplicate/unknown capabilities, unknown kinds and invalid sources are rejected. A site created with `POST /sites` is in `GET /api/v1/sites` at once. A device provisioned with `POST /sites/{site_id}/devices` is in the next `GET /api/v1/sites/{site_id}` snapshot at once, offline until its first telemetry (the snapshot's device list is cached per API process, and the API runs as one process).
 
 History requires timezone-aware `start` and `end` query parameters, normalizes them to UTC and uses the half-open interval `[start, end)`. The maximum window is 30 days. `limit` defaults to 100 and accepts 1–500; `device_id` optionally narrows the query to a device belonging to the site. For example: `/sites/{site_id}/measurements?start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z&limit=100`.
 

@@ -6,29 +6,30 @@ import pytest
 from app.sim.core import (
     Action,
     Controller,
-    Scenario,
-    State,
     baseline,
-    ev_present,
-    ev_remaining,
     initial_state,
-    player_action,
     run,
     step,
 )
 from app.sim.optimizer import autopilot, optimum
-from app.sim.scenario_office import office
+from app.sim.scenario_office import (
+    careful_human,
+    comparisons,
+    flat_tariff,
+    office,
+    without_battery,
+)
 
-
-def careful_human(s: Scenario, st: State) -> Action:
-    """A sensible person: wait for the cheap hours, then earliest deadline first."""
-    if st.t < 12:
-        return player_action(s, st, "auto", ())
-    cars = sorted(
-        (e for e in s.evs if ev_present(e, st.t) and ev_remaining(st, e) > 1e-6),
-        key=lambda e: e.depart_known_at(st.t),
-    )
-    return player_action(s, st, "auto", [e.id for e in cars[: s.n_chargers]])
+# Every line printed by `python -m app.sim.scenario_office`: cost in EUR and cars ready.
+PRINTED = (
+    ("no management", 27.77, 10),
+    ("Autopilot", 18.24, 10),
+    ("optimum (knows the future)", 17.48, 10),
+    ("one simple rule (a person)", 25.51, 8),
+    ("Autopilot, no battery", 21.83, 10),
+    ("flat tariff, no management", 34.35, 10),
+    ("flat tariff, Autopilot", 34.23, 10),
+)
 
 
 @pytest.mark.parametrize("controller", [baseline, autopilot, optimum, careful_human])
@@ -50,6 +51,27 @@ def test_office_day_reference_numbers() -> None:
     assert run(scenario, baseline).score.total_eur == pytest.approx(27.77, abs=0.01)
     assert run(scenario, autopilot).score.total_eur == pytest.approx(18.24, abs=0.05)
     assert run(scenario, optimum).score.total_eur == pytest.approx(17.48, abs=0.05)
+
+
+def test_every_printed_comparison_is_pinned() -> None:
+    runs = comparisons()
+    assert [label for label, _, _ in runs] == [label for label, _, _ in PRINTED]
+    for (label, scenario, controller), (_, cost_eur, ready) in zip(runs, PRINTED, strict=True):
+        score = run(scenario, controller).score
+        assert (score.total_eur, score.evs_ready, score.evs_total) == (cost_eur, ready, 10), label
+
+
+def test_comparison_cases_change_only_what_they_say() -> None:
+    day = office()
+    simple_rule = run(day, careful_human).score
+    assert simple_rule.missed == ("Петър", "Яна")
+    no_battery = run(without_battery(day), autopilot)
+    assert all(r.battery_kw == 0 for r in no_battery.timeline)
+    assert no_battery.score.battery_cycles == 0
+    flat = flat_tariff(day)
+    assert np.all(flat.price_buy == 0.20) and np.all(flat.price_sell == 0.05)
+    assert np.array_equal(flat.solar_actual_kw, day.solar_actual_kw)
+    assert flat.evs == day.evs and flat.battery == day.battery
 
 
 def test_autopilot_charges_every_car_and_beats_no_management() -> None:
@@ -86,12 +108,7 @@ def test_autopilot_cannot_see_the_future() -> None:
 
 
 def test_flat_tariff_gives_no_meaningful_saving() -> None:
-    scenario = office()
-    flat = replace(
-        scenario,
-        price_buy=np.full(scenario.steps, 0.20),
-        price_sell=np.full(scenario.steps, 0.05),
-    )
+    flat = flat_tariff(office())
     managed, unmanaged = run(flat, autopilot).score, run(flat, baseline).score
     assert managed.total_eur == pytest.approx(unmanaged.total_eur, rel=0.02)
 

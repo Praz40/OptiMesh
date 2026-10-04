@@ -22,14 +22,14 @@ export function SimulatorGame() {
     <>
       <div className="page-head">
         <div>
-          <p className="eyebrow">Simulator</p>
-          <h1>Can you beat Autopilot?</h1>
-          <p className="muted">Run a day at the office by hand, then watch Autopilot run the very same day.</p>
+          <p className="eyebrow">Симулатор</p>
+          <h1>Можете ли да победите Автопилота?</h1>
+          <p className="muted">Управлявайте ръчно един ден в офиса, после гледайте как Автопилотът управлява същия ден.</p>
         </div>
         {phase !== "intro" && (
           <div className="head-actions">
             <button type="button" className="button-ghost" onClick={() => dispatch({ type: "new-day", seed: game.scenario.seed })}>
-              Back to the briefing
+              Към описанието на деня
             </button>
           </div>
         )}
@@ -40,14 +40,14 @@ export function SimulatorGame() {
           {dayOver && (
             <div className="sim-banner" role="status">
               <span>
-                <strong>Day complete.</strong> Now let Autopilot run the same day and compare.
+                <strong>Денят приключи.</strong> Сега пуснете Автопилота в същия ден и сравнете.
               </span>
               <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                 <button type="button" className="button-primary" onClick={() => dispatch({ type: "start-autopilot" })}>
-                  Run Autopilot
+                  Пусни Автопилота
                 </button>
                 <button type="button" onClick={() => dispatch({ type: "show-results" })}>
-                  See results
+                  Виж резултатите
                 </button>
               </span>
             </div>

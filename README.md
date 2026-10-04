@@ -8,17 +8,21 @@ OptiMesh is an energy autopilot for one site (a home, a workshop or an office): 
 
 ## Накратко
 
-OptiMesh свързва устройствата на един обект чрез общ MQTT договор, показва живите им измервания в табло и изпраща команди, които стават „Applied“ едва след потвърждение от устройството. Бекендът прогнозира слънцето, товара и цената за следващите 24 часа, а Autopilot (засега само в симулация) решава кога да се зареждат колите и батерията. В един симулиран офисен ден с борсовите цени за България от 30.09.2026 Autopilot сваля разхода от 27,77 на 18,24 EUR и зарежда навреме и 10-те коли; това е симулация с допуснати товари и коли, а не измерване на реален обект.
+OptiMesh свързва устройствата на един обект чрез общ MQTT договор, показва живите им измервания в табло и изпраща команди, които стават „Приложено“ едва след потвърждение от устройството. Бекендът прогнозира слънцето, товара и цената за следващите 24 часа, а Autopilot (засега само в симулация) решава кога да се зареждат колите и батерията. В един симулиран офисен ден с борсовите цени за България от 30.09.2026 Autopilot сваля разхода от 27,77 на 18,24 EUR и зарежда навреме и 10-те коли; това е симулация с допуснати товари и коли, а не измерване на реален обект.
 
 ## What it does
 
 The demo has three acts.
 
 **1. Connect.** Devices (an ESP32 or the device simulator) send telemetry over MQTT in one shared contract, and the dashboard shows every site live over a WebSocket.
-Flip a switch on the dashboard and the command travels back to the device; the log says `Applied` only after the device acknowledges it.
+Switch the site to „Асистент“ mode (by default every site opens in „Наблюдение“, which is read-only), flip a switch on the dashboard and the command travels back to the device; the log says „Приложено“ only after the device acknowledges it.
+
+![Workshop in „Асистент“ mode: the Compressor commands are „Приложено“ in the activity log](docs/images/connect.png)
 
 **2. Predict.** For each site the API forecasts the next 24 hours of solar, load and price, prices today's grid energy and proposes commands (`/forecast`, `/costs`, `/recommendations`).
-Every forecast lists its assumptions. The dashboard does not show these yet, so the demo opens them in the API docs at http://127.0.0.1:8000/docs.
+Every forecast lists its assumptions. The dashboard shows the forecast and today's costs with their assumptions in the „Прогноза“ and „Разходи“ tabs and the recommendations in „Асистент“ mode; the raw responses are in the API docs at http://127.0.0.1:8000/docs.
+
+![The Office „Прогноза“ tab: expected solar and load, hourly prices and the forecast's assumptions](docs/images/predict.png)
 
 **3. Optimize.** In the `/simulator` game you run an office day by hand (10 cars, 3 chargers, a battery and solar), then Autopilot runs the very same day and the results compare cost, peak and cars charged.
 In the terminal, a linear-programming Autopilot plans an office day on real day-ahead prices; its numbers are under [Results](#results).
@@ -64,22 +68,23 @@ Steps 1–4 carry measurements to the dashboard; steps 5–10 carry a command ba
 - **One device contract (v1)**: telemetry, commands and acknowledgements over MQTT. The hardware-facing spec is [docs/contracts.md](docs/contracts.md); JSON Schemas and examples are in `contracts/`. Telemetry ingestion is idempotent per `message_id`, over MQTT or `POST /api/v1/telemetry`.
 - **Live loop in both directions**: the MQTT bridge stores telemetry in PostgreSQL and streams a snapshot of each site over `/api/v1/sites/{site_id}/live`. Commands are validated against the device's capabilities and limits and go `pending → sent → applied / rejected / expired / failed`; only the device's acknowledgement makes a command `applied`.
 - **MQTT over verified TLS** for the Raspberry Pi broker; plain MQTT is accepted only for an anonymous local broker. See [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md).
-- **Forecast, costs and recommendations** (API only, Bulgarian texts):
+- **Forecast, costs and recommendations** (API with Bulgarian texts, shown in the „Прогноза“ and „Разходи“ tabs and in „Асистент“ mode):
   - `GET /api/v1/sites/{site_id}/forecast`: the next 24 hours, hourly: expected solar (clear-sky curve × installed inverter capacity × 0.85), load (the past week's average at that hour, or the current consumption) and import/export prices, with the assumptions listed.
   - `GET /api/v1/sites/{site_id}/costs`: today's energy cost at the grid meter (local day), from interval energy.
   - `GET /api/v1/sites/{site_id}/recommendations`: up to five proposed commands with the reason and a rough saving. Nothing is sent; applying one goes through `POST /api/v1/sites/{site_id}/devices/{device_id}/commands`.
-- **Dashboard**: a Portfolio of all sites; per site an Overview (KPI tiles, animated energy flow, plain-language insights, power chart, flexible devices with switch and power-limit controls, recent commands), a Devices page and an Activity page with the command history.
+- **Dashboard**: a Portfolio („Портфолио“) of all sites; per site an Overview („Преглед“: KPI tiles, animated energy flow, plain-language insights, power chart, flexible devices with switch and power-limit controls, recent commands), a Devices page („Устройства“) and an Activity page („Активност“) with the command history.
 - **Forecast tab** („Прогноза“, `/sites/{site_id}/forecast`): expected solar and load for the next 24 hours on one chart and import/export prices on a separate step chart, marked as a forecast and listing the API's assumptions.
-- **Costs tab** („Разходи“, `/sites/{site_id}/costs`): today's cost so far at the grid meter, energy imported and exported, the projected day cost and an hourly table with the assumptions, plus a "cost now" tile on the Overview (grid power × this hour's price).
+- **Costs tab** („Разходи“, `/sites/{site_id}/costs`): today's cost so far at the grid meter, energy imported and exported, the projected day cost and an hourly table with the assumptions, plus a „Разход в момента“ tile on the Overview (grid power × this hour's price).
 - **Monitor and Assist modes** (site header, remembered per site in the browser): „Наблюдение“ is read-only and the default; „Асистент“ lists the API's recommendations, sends one only on „Приложи“ and follows it to `applied`, `rejected`, `expired` or `failed`; „Автопилот“ is shown but disabled for real sites.
 - **`/simulator` game**: an office day by hand, then the same day with a rule-based Autopilot, compared on cost, peak and cars charged. It runs in the browser and needs no backend.
 - **Scenario simulator and Autopilot** (`services/api/app/sim`): a deterministic office day (10 EVs, 3 chargers, battery, solar, Bulgarian day-ahead prices) and a rolling-horizon linear-programming scheduler. See [Results](#results).
 - **Device simulator** (`python -m app.simulator`): virtual devices for the demo sites, speaking the same MQTT contract as hardware; `--include-hardware` also stands in for the ESP32.
 - **ESP32 firmware** (`firmware/esp32-telemetry`): publishes telemetry over TLS to the Raspberry Pi broker (reported in PR #22; CI does not build the firmware). See its [README](firmware/esp32-telemetry/README.md).
 - **Authenticated provisioning and history** (`/sites`): Supabase bearer-token verification, site and device provisioning and paginated UTC history, owner-scoped. See [docs/sites-api.md](docs/sites-api.md).
+- **Sign-in and device onboarding in the dashboard** (optional): email and password with Supabase Auth, „Моите обекти“ (your own sites, „Нов обект“), „Добави устройство“ and, per device, „Свързване“ (site and device IDs, MQTT topics, a telemetry example that matches the contract, the ESP32 `SITE_ID`/`DEVICE_ID` lines). Needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `apps/web/.env.local`; without them these screens are hidden.
 - **Database**: one Alembic chain `0001 → 0002 → 0003`; CI runs the migration round trip against PostgreSQL 17. Demo seed: Home, Workshop (where the physical ESP32 lives) and Office, with fixed UUIDs. See [docs/database.md](docs/database.md).
 
-**Not built yet**: authentication on `/api/v1`, dashboard screens for the forecast and costs, Autopilot on real devices, ESP32 commands and deployment. Details are under [Limitations](#limitations).
+**Not built yet**: authentication on `/api/v1`, Autopilot on real devices, ESP32 commands and deployment. Details are under [Limitations](#limitations).
 
 ## Results
 
@@ -124,9 +129,28 @@ What this does **not** show: the peak stays at the 30 kW connection limit in all
 
 The inputs are in [scenario_office.py](services/api/app/sim/scenario_office.py) and [core.py](services/api/app/sim/core.py). The `/simulator` game is a different scenario (different day, tariff, solar and battery), so its results are not comparable with this table. The full project report in Bulgarian, with every number labelled, is [docs/REPORT.md](docs/REPORT.md).
 
+## OptiMesh Game (`game/`)
+
+`game/` is the OptiMesh Game, Daniel's offline exhibition game made in Godot 4.5. You run an office day with solar, a battery, three EV chargers, cooling and an equipment wash, then see the same day under normal operation, your decisions and an OptiMesh reference strategy. It needs no backend, network or account. Read [game/README.md](game/README.md) for the gameplay and the game's own documentation.
+
+- **Play on Windows**: download the Windows x86_64 ZIP from the [v0.1.1-demo release](https://github.com/DGtao13/OptiMesh-Game/releases/tag/v0.1.1-demo) (a pre-release), extract it and run `OptiMesh.exe`.
+- **Open the source**: in standard Godot 4.5 or newer (the .NET edition is not needed), import [game/project.godot](game/project.godot) in the Project Manager and press F5.
+- **Where it comes from**: the folder was imported with its full history from [DGtao13/OptiMesh-Game](https://github.com/DGtao13/OptiMesh-Game) at `1760a07`, the commit the v0.1.1-demo release is tagged at. Later commits can be brought in with `git subtree pull --prefix=game https://github.com/DGtao13/OptiMesh-Game.git main`, never with `--squash`, so that Daniel's commits stay in the history.
+- **CI does not run the game's tests.** The GDScript suites in `game/tests` run on Windows with Godot through `game/Test-Prototype.ps1` (see [game/README.md](game/README.md)); the `frontend` and `backend` jobs do not install Godot.
+
+**Three separate simulations.** The repository now has three simulations. Each has its own scenario, model and numbers, and their results must not be compared with each other:
+
+| Simulation | Where | Scenario |
+| --- | --- | --- |
+| Scenario simulator and LP Autopilot | `services/api/app/sim` | Office day 07:00–19:00, 10 EVs on 3 chargers, Bulgarian day-ahead prices for 30 Sep 2026 (the [Results](#results) above) |
+| Browser game | `/simulator` in the dashboard (`apps/web/src/sim`) | Office day by hand with 10 cars on 3 chargers, then a rule-based Autopilot, on its own tariff, solar and battery |
+| OptiMesh Game | `game/` (Godot) | Office day 08:00–18:00 with 3 EVs, cooling, a wash and a grid-limit challenge on an illustrative tariff, scored up to 1000 points; its reference strategy is not the LP Autopilot |
+
 ## Run it
 
 Install Node.js 24 LTS and [uv](https://docs.astral.sh/uv/getting-started/installation/); uv can install Python 3.12. The live demo also needs Docker. Run commands from the Git repository root (the nested OptiMesh folder) unless a step says otherwise.
+
+For the stage, follow the demo runbook in Bulgarian, [docs/DEMO.md](docs/DEMO.md): preparation, start order, the three acts, what to do when something fails, the reset procedure and a setup without Docker.
 
 ### Quick start
 
@@ -137,7 +161,7 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:3000/simulator. The game needs no backend; without one, the sidebar shows "API unreachable" and the Portfolio page cannot load sites.
+Open http://localhost:3000/simulator. The game needs no backend; without one, the sidebar shows „Няма връзка с API“ and the „Портфолио“ page cannot load sites.
 
 The browser calls the API at `NEXT_PUBLIC_API_URL`, which defaults to port 8000 on the same host. The server-side status check uses `API_URL`. Copy apps/web/.env.example to apps/web/.env.local to override them. The dashboard dev server already listens on the LAN, but the API listens only on 127.0.0.1. To open the dashboard from another device on a trusted LAN, start the API with `--host 0.0.0.0` and add the dashboard's origin (for example `http://<laptop-ip>:3000`) to the API's `CORS_ORIGINS`. Do this only on a trusted network: `/api/v1` has no authentication.
 
@@ -185,11 +209,11 @@ npm run dev
 
 On Windows, keep `--reload` on the API command: without it uvicorn uses the Proactor event loop, which the MQTT client cannot run on.
 
-Open http://localhost:3000, pick a site and flip a switch. The command log shows `Applied` only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
+Open http://localhost:3000, pick a site, choose „Асистент“ in its header (by default every site opens in „Наблюдение“, which is read-only; the choice is remembered per site in the browser) and flip a switch. The command log shows „Приложено“ only after the device acknowledges it. The Workshop's "ESP32 demo load" stays offline until the real board connects, or until you run the simulator with `--include-hardware`.
 
 To connect the real ESP32 through the Raspberry Pi broker over TLS, see [docs/raspberry-pi-mqtt.md](docs/raspberry-pi-mqtt.md). For Supabase, the Compose API container and migration notes, see [docs/database.md](docs/database.md).
 
-Verification for this README (2026-10-03, Linux, no Docker on the machine): the quick start, the backend without a database and the scenario were run, as were all the checks below. The live demo (`docker compose`, `alembic upgrade head`, `app.seed`, `app.simulator`) was **not run** here; CI runs the migrations and the database tests against PostgreSQL 17 on every pull request.
+Verification for this README (2026-10-03, Linux, no Docker on the machine): the quick start, the backend without a database and the scenario were run, as were all the checks below. The live demo (`docker compose`, `alembic upgrade head`, `app.seed`, `app.simulator`) was **not run** here; CI runs the migrations and the database tests against PostgreSQL 17 on every pull request. Later the same day the live demo was run on Windows 11 with PostgreSQL 17 and Mosquitto 2 started without Docker (same ports and credentials as `compose.yaml`); `docker compose` itself was not run. The checks and their results are in [docs/DEMO.md](docs/DEMO.md).
 
 ## Repository layout
 
@@ -207,6 +231,7 @@ services/api/              FastAPI backend, Python 3.12, uv
   alembic/versions/        migrations 0001 -> 0002 -> 0003
 contracts/                 JSON Schemas and examples generated from app/schemas.py
 firmware/esp32-telemetry/  ESP32 telemetry firmware
+game/                      OptiMesh Game: Daniel's offline Godot 4.5 exhibition game (not run in CI)
 docs/                      device contract, project report and reference guides
 infra/mosquitto/           local broker config (anonymous, localhost only)
 scripts/                   GitHub backlog setup and config validation
@@ -259,17 +284,18 @@ Branch `feature/<slug>` from `develop`, one issue per branch, and open a PR into
 | --- | --- |
 | [Praz40](https://github.com/Praz40) (Dimitar)| Project foundation: FastAPI and Next.js skeleton, models and migration `0001`, CI, backlog script, CodeRabbit config (#1). Site/device registry, measurement history and Supabase JWT verification for `/sites` (#20). Repository owner. |
 | [unkownshadows](https://github.com/unkownshadows) (Yordan)| Opened and merged the live vertical slice: command and ack contracts, MQTT bridge, WebSocket, commands, dashboard, seed and device simulator. App shell and dashboard, the `/simulator` game, the Windows event-loop fix for the simulator, and the tariff, forecast, cost and recommendation modules (five commits in #28). |
-| [DGtao13](https://github.com/DGtao13) (Daniel)| ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). |
+| [DGtao13](https://github.com/DGtao13) (Daniel)| ESP32 telemetry firmware over TLS (#22). Authenticated MQTT ingestion into PostgreSQL with verified TLS, a freshness window and bounded retries (#26). Merge of `develop` into `main` (#27). The OptiMesh Game, the offline Godot exhibition game in `game/` (imported with its history from DGtao13/OptiMesh-Game). |
 | [GamingSimpwa](https://github.com/GamingSimpwa) (Stoyan)| `develop` synced with `main` and one migration chain, CLAUDE.md and CONTRIBUTING.md (#23). Scenario simulator and LP Autopilot (#24). Verified TLS for the MQTT bridge (#25). Integration of the dashboard and game branch (#28). MQTT disconnect reasons in the logs (#29). Forecast, costs and recommendations routes (#30). Project report (#31). |
 
 ## Limitations
 
 - **No authentication on `/api/v1`, the WebSocket or commands** (issue #3): any client that reaches the API can read every site and send commands. Keep the API on localhost or a trusted LAN. Only the `/sites` routes verify a Supabase token.
-- The dashboard does not call `/forecast`, `/costs` or `/recommendations` yet (#12), and has no Monitor or Assist mode (#10).
-- Autopilot runs only in the two simulations; it does not control real devices. `/recommendations` proposes commands and sends nothing.
+- **Signing in does not hide other users' sites yet** (issue #3): „Портфолио“, the sidebar's site list and `/api/v1` still show every site to everyone, signed in or not. Only „Моите обекти“ and the `/sites` routes are per user.
+- Monitor and Assist (#10) are a dashboard setting kept in the browser: „Наблюдение“ blocks commands in the dashboard only, and the API accepts commands from any client until #3 adds authentication.
+- Autopilot runs only in `app/sim` and the `/simulator` game (the Godot game in `game/` has its own reference strategy); it does not control real devices. `/recommendations` proposes commands and sends nothing.
 - The scenario simulator (`app/sim`) has no API or screen. The `/simulator` game uses its own TypeScript simulation with a rule-based Autopilot.
 - The ESP32 firmware publishes telemetry for a constant simulated load only: no command subscription, acknowledgement or GPIO control (#9). The device simulator shows the return path.
 - One invented demo time-of-use tariff for every site (`app/tariff.py`), not a supplier's tariff.
 - No second third-party device adapter (#18).
 - No deployment (#15).
-- Dashboard text is still English; the team decided on Bulgarian UI text.
+- The dashboard is in Bulgarian, except the site and device names from `app/seed.py` and the API's error messages, which are still English.

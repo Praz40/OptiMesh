@@ -1,16 +1,16 @@
 import type { CommandStatus, DeviceKind, DeviceLive, SiteSummary } from "./api";
+import { formatEnergyBg, formatKwBg, formatNumber } from "./format";
 
 function finite(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
 }
 
-/** Splits a power value into a display number and unit, e.g. 1530 -> ["1.5", "kW"]. */
+/** Splits a power value into a display number and unit, e.g. 1530 -> ["1,5", "kW"]. */
 export function powerParts(watts: number | null | undefined): [string, string] {
   if (!finite(watts)) return ["—", ""];
   const abs = Math.abs(watts);
   if (abs < 1000) return [String(Math.round(watts)), "W"];
-  const kw = watts / 1000;
-  return [kw.toFixed(abs < 10_000 ? 1 : 0), "kW"];
+  return [formatNumber(watts / 1000, abs < 10_000 ? 1 : 0), "kW"];
 }
 
 export function formatPower(watts: number | null | undefined): string {
@@ -20,63 +20,67 @@ export function formatPower(watts: number | null | undefined): string {
 
 /** Axis-friendly kW: whole numbers from 10 kW, one decimal below. */
 export function formatKw(watts: number): string {
-  const value = watts / 1000;
-  return `${Math.abs(value) >= 10 || value === 0 ? value.toFixed(0) : value.toFixed(1)} kW`;
+  return formatKwBg(watts);
 }
 
 export function formatEnergy(wh: number | null | undefined): string {
-  if (!finite(wh)) return "—";
-  const abs = Math.abs(wh);
-  if (abs < 1000) return `${Math.round(wh)} Wh`;
-  return `${(wh / 1000).toFixed(abs < 100_000 ? 1 : 0)} kWh`;
+  return formatEnergyBg(wh);
 }
 
+/** 45.4 -> "45 %", with a space as in Bulgarian. */
 export function formatPercent(value: number | null | undefined): string {
   if (!finite(value)) return "—";
-  return `${Math.round(value)}%`;
+  return `${formatNumber(value, 0)} %`;
 }
 
-/** "just now", "12 s ago", "4 min ago", "2 h ago". */
+/** "току-що", "преди 12 сек", "преди 4 мин", "преди 2 ч". */
 export function formatAgo(iso: string | null | undefined, now: number): string {
-  if (!iso) return "never";
+  if (!iso) return "никога";
   const seconds = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
-  if (seconds < 3) return "just now";
-  if (seconds < 60) return `${seconds} s ago`;
+  if (seconds < 3) return "току-що";
+  if (seconds < 60) return `преди ${seconds} сек`;
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return `преди ${minutes} мин`;
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
+  if (hours < 48) return `преди ${hours} ч`;
+  return `преди ${Math.round(hours / 24)} дни`;
 }
 
 export function formatClock(iso: string | number, withSeconds = false): string {
-  return new Date(iso).toLocaleTimeString([], {
+  return new Date(iso).toLocaleTimeString("bg-BG", {
     hour: "2-digit",
     minute: "2-digit",
+    hourCycle: "h23",
     ...(withSeconds ? { second: "2-digit" } : {}),
   });
 }
 
 export const KIND_LABELS: Record<DeviceKind, string> = {
-  grid_meter: "Grid meter",
-  solar_inverter: "Solar inverter",
-  battery: "Battery",
-  ev_charger: "EV charger",
-  hvac: "HVAC",
-  boiler: "Boiler",
-  smart_plug: "Smart plug",
-  load: "Load",
+  grid_meter: "Електромер",
+  solar_inverter: "Инвертор",
+  battery: "Батерия",
+  ev_charger: "Зарядна станция",
+  hvac: "Климатизация",
+  boiler: "Бойлер",
+  smart_plug: "Смарт контакт",
+  load: "Товар",
 };
+
+/** "1 устройство", "3 устройства". */
+export function devicesCount(count: number): string {
+  return `${count} ${count === 1 ? "устройство" : "устройства"}`;
+}
 
 export type Tone = "good" | "warn" | "bad";
 
 /** Portfolio-level health: are this site's devices reporting? */
 export function siteHealth(summary: SiteSummary): { tone: Tone; label: string } {
   const { devices_online: online, devices_total: total } = summary;
-  if (total === 0) return { tone: "warn", label: "No devices" };
-  if (online === total) return { tone: "good", label: `All ${total} devices online` };
-  if (online === 0) return { tone: "bad", label: "No devices reporting" };
-  return { tone: "warn", label: `${total - online} of ${total} devices offline` };
+  if (total === 0) return { tone: "warn", label: "Няма устройства" };
+  if (online === total) return { tone: "good", label: total === 1 ? "1 устройство на линия" : `Всички ${total} устройства на линия` };
+  if (online === 0) return { tone: "bad", label: "Нито едно устройство не изпраща данни" };
+  const offline = total - online;
+  return { tone: "warn", label: `${offline} от ${total} устройства ${offline === 1 ? "не е" : "не са"} на линия` };
 }
 
 /** Telemetry is expected every 2–5 s, so a reading older than this is "late" even while online. */
@@ -84,10 +88,13 @@ export const LATE_AFTER_S = 8;
 
 export function freshness(live: DeviceLive, now: number): { tone: Tone; label: string } {
   if (!live.online) {
-    return { tone: "bad", label: live.received_at ? `Offline · last seen ${formatAgo(live.received_at, now)}` : "Never connected" };
+    return {
+      tone: "bad",
+      label: live.received_at ? `Не е на линия · последни данни ${formatAgo(live.received_at, now)}` : "Никога не се е свързвало",
+    };
   }
   const age = live.received_at ? (now - Date.parse(live.received_at)) / 1000 : 0;
-  return { tone: age > LATE_AFTER_S ? "warn" : "good", label: `Updated ${formatAgo(live.received_at, now)}` };
+  return { tone: age > LATE_AFTER_S ? "warn" : "good", label: `Обновено ${formatAgo(live.received_at, now)}` };
 }
 
 export type FlowNode = "solar" | "grid" | "battery" | "ev" | "home";
@@ -152,27 +159,43 @@ export function supplyMix(summary: SiteSummary): SupplyShare[] {
   ].filter((share) => share.watts >= IDLE_THRESHOLD_W);
 }
 
-export function gridDirection(watts: number | null): "importing" | "exporting" | "balanced" | null {
+export type GridDirection = "importing" | "exporting" | "balanced";
+
+export function gridDirection(watts: number | null): GridDirection | null {
   if (watts === null) return null;
   if (watts > IDLE_THRESHOLD_W) return "importing";
   if (watts < -IDLE_THRESHOLD_W) return "exporting";
   return "balanced";
 }
 
-export function batteryDirection(watts: number | null): "charging" | "discharging" | "idle" | null {
+export const GRID_LABELS: Record<GridDirection, string> = {
+  importing: "взема от мрежата",
+  exporting: "отдава към мрежата",
+  balanced: "в баланс",
+};
+
+export type BatteryDirection = "charging" | "discharging" | "idle";
+
+export function batteryDirection(watts: number | null): BatteryDirection | null {
   if (watts === null) return null;
   if (watts > IDLE_THRESHOLD_W) return "charging";
   if (watts < -IDLE_THRESHOLD_W) return "discharging";
   return "idle";
 }
 
+export const BATTERY_LABELS: Record<BatteryDirection, string> = {
+  charging: "зарежда",
+  discharging: "разрежда",
+  idle: "в покой",
+};
+
 export const COMMAND_LABELS: Record<CommandStatus, string> = {
-  pending: "Sending…",
-  sent: "Waiting for device…",
-  applied: "Applied",
-  rejected: "Rejected by device",
-  expired: "No response from device",
-  failed: "Could not send",
+  pending: "Изпраща се…",
+  sent: "Чака устройството…",
+  applied: "Приложено",
+  rejected: "Отказано",
+  expired: "Няма отговор",
+  failed: "Не е изпратено",
 };
 
 export function isFinalStatus(status: CommandStatus): boolean {

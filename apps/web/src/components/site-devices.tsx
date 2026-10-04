@@ -25,14 +25,15 @@ export function SiteDevices() {
       {!canSendCommands(mode) && <ModeNotice mode={mode} />}
       {offline > 0 && (
         <p className="notice" role="status">
-          {offline} of {devices.length} devices are not reporting. A device counts as offline after 15 s without
-          telemetry; its controls stay disabled until it is back.
+          {offline} от {devices.length} устройства {offline === 1 ? "не изпраща" : "не изпращат"} данни. Смята се, че
+          устройство не е на линия, ако 15 секунди не е изпратило телеметрия; управлението му остава недостъпно, докато не
+          се върне.
         </p>
       )}
       <section className="panel" aria-labelledby="supply-title">
         <div className="panel-head">
-          <h2 id="supply-title">Supply and storage</h2>
-          <span className="muted">Grid, solar and batteries</span>
+          <h2 id="supply-title">Захранване и съхранение</h2>
+          <span className="muted">Мрежа, слънце и батерии</span>
         </div>
         <DeviceList
           devices={devices}
@@ -45,8 +46,8 @@ export function SiteDevices() {
       </section>
       <section className="panel" aria-labelledby="loads-title">
         <div className="panel-head">
-          <h2 id="loads-title">Loads</h2>
-          <span className="muted">EV chargers, HVAC, boilers and other consumers</span>
+          <h2 id="loads-title">Товари</h2>
+          <span className="muted">Зарядни станции, климатизация, бойлери и други консуматори</span>
         </div>
         <DeviceList
           devices={devices}

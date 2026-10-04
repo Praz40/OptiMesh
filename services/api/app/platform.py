@@ -137,6 +137,10 @@ class Platform:
         cached = self._site_devices.get(site_id)
         return cached if cached is not None else self._load_site_devices(site_id)
 
+    def forget_site_devices(self, site_id: UUID) -> None:
+        """Drop one site's cached device list; the next read loads it from the database."""
+        self._site_devices.pop(site_id, None)
+
     def find_device(self, site_id: UUID, device_id: UUID) -> DeviceOut | None:
         device = self._devices.get(device_id)
         if device is None:

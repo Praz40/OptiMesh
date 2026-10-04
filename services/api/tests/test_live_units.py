@@ -10,7 +10,7 @@ from app.config import Settings
 from app.energy import Reading, summarize
 from app.live import EventHub, LiveState
 from app.mqtt import MqttBridge
-from app.platform import InvalidRequest, validate_command
+from app.platform import DatabaseUnavailable, InvalidRequest, Platform, validate_command
 from app.schemas import (
     Capability,
     CommandAck,
@@ -158,6 +158,20 @@ def test_setpoint_respects_device_limits(power: float, ok: bool) -> None:
 def test_malformed_commands_are_rejected(body: dict) -> None:
     with pytest.raises(ValueError):
         commands.validate_python(body)
+
+
+def test_forgetting_a_sites_devices_keeps_other_sites_cached() -> None:
+    platform = Platform(None, stale_after_s=15, command_ttl_s=15)
+    changed, kept = device([]), device([])
+    platform._site_devices = {changed.site_id: [changed], kept.site_id: [kept]}
+    platform._devices = {changed.id: changed, kept.id: kept}
+    platform.forget_site_devices(changed.site_id)
+    platform.forget_site_devices(uuid4())
+    # No database here: a cached list is served, a dropped one has to be loaded again.
+    assert platform.site_devices(kept.site_id) == [kept]
+    with pytest.raises(DatabaseUnavailable):
+        platform.site_devices(changed.site_id)
+    assert platform._devices == {changed.id: changed, kept.id: kept}
 
 
 # --- live state and fan-out ---------------------------------------------------------------

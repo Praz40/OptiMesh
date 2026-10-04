@@ -124,16 +124,16 @@ type EvTemplate = [driver: string, model: string, arrive: string, leave: string,
  * A schedule that meets every deadline exists (see the tests).
  */
 const FLEET: EvTemplate[] = [
-  ["Boris", "VW ID.4", "07:30", "17:30", 30, 11],
-  ["Georgi", "Kia EV6", "07:45", "18:00", 28, 11],
-  ["Nikolay", "BMW i4", "08:00", "18:30", 25, 11],
-  ["Ana", "Tesla Model 3", "08:15", "11:30", 18, 11],
-  ["Elena", "Renault Zoe", "08:30", "12:00", 12, 7.4],
-  ["Ivan", "Nissan Leaf", "08:45", "13:30", 14, 7.4],
-  ["Maria", "Hyundai Kona", "09:00", "16:30", 20, 11],
-  ["Petya", "Fiat 500e", "10:00", "13:00", 10, 7.4],
-  ["Stefan", "Skoda Enyaq", "11:00", "19:00", 32, 11],
-  ["Vesela", "Peugeot e-208", "13:00", "16:00", 15, 7.4],
+  ["Борис", "VW ID.4", "07:30", "17:30", 30, 11],
+  ["Георги", "Kia EV6", "07:45", "18:00", 28, 11],
+  ["Николай", "BMW i4", "08:00", "18:30", 25, 11],
+  ["Ана", "Tesla Model 3", "08:15", "11:30", 18, 11],
+  ["Елена", "Renault Zoe", "08:30", "12:00", 12, 7.4],
+  ["Иван", "Nissan Leaf", "08:45", "13:30", 14, 7.4],
+  ["Мария", "Hyundai Kona", "09:00", "16:30", 20, 11],
+  ["Петя", "Fiat 500e", "10:00", "13:00", 10, 7.4],
+  ["Стефан", "Skoda Enyaq", "11:00", "19:00", 32, 11],
+  ["Весела", "Peugeot e-208", "13:00", "16:00", 15, 7.4],
 ];
 
 // 2026-06-17 is a Wednesday; Sofia is UTC+3 in summer, so 06:00 local = 03:00Z.
@@ -184,12 +184,12 @@ export function officeScenario(seed = 7): Scenario {
     series.exportPrice.push(EXPORT_PRICE);
   }
 
-  const chargers = OFFICE.chargers.map((id, i) => ({ id, name: `Charger ${i + 1}`, minW: 1400, maxW: 11_000 }));
+  const chargers = OFFICE.chargers.map((id, i) => ({ id, name: `Зарядна ${i + 1}`, minW: 1400, maxW: 11_000 }));
 
   return {
     id: `office-${seed}`,
-    name: "Office, hot summer weekday",
-    description: "30 kW carport solar, a 50 kWh battery, office HVAC, and 10 electric cars sharing 3 chargers.",
+    name: "Офис в горещ летен делничен ден",
+    description: "30 kW слънчеви панели над паркинга, батерия 50 kWh, климатизация в офиса и 10 електромобила с 3 общи зарядни.",
     seed,
     timezone,
     currency: "EUR",

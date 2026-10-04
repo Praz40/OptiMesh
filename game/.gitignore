@@ -1,0 +1,26 @@
+# Godot cache and local runtime/tools
+.godot/
+.tools/
+
+# Local validation output; keep the Godot exclusion marker
+artifacts/*
+!artifacts/.gdignore
+
+# Exported builds and generated project output
+/build/
+/builds/
+/dist/
+/exports/
+export_credentials.cfg
+
+# Editor and operating-system metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.swp
+*~

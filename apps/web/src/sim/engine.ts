@@ -1,4 +1,5 @@
 import type { SiteSummary } from "@/lib/api";
+import { formatNumber, formatSiteTime } from "@/lib/format";
 import type { EvSpec, Scenario } from "./scenario";
 
 /**
@@ -123,7 +124,7 @@ export function initialState(scenario: Scenario): SimState {
 }
 
 function hhmm(scenario: Scenario, t: number): string {
-  return new Date(t).toLocaleTimeString("en-GB", { timeZone: scenario.timezone, hour: "2-digit", minute: "2-digit" });
+  return formatSiteTime(t, scenario.timezone);
 }
 
 function arrivals(scenario: Scenario, after: number, upTo: number): SimEvent[] {
@@ -133,7 +134,7 @@ function arrivals(scenario: Scenario, after: number, upTo: number): SimEvent[] {
       t: ev.arrival,
       kind: "arrival" as const,
       evId: ev.id,
-      text: `${ev.driver} arrived: needs ${(ev.needWh / 1000).toFixed(0)} kWh by ${hhmm(scenario, ev.departure)}`,
+      text: `${ev.driver} пристигна: иска ${(ev.needWh / 1000).toFixed(0)} kWh до ${hhmm(scenario, ev.departure)}`,
     }));
 }
 
@@ -218,7 +219,7 @@ export function step(scenario: Scenario, state: SimState, controls: Controls): S
       deliveredWh[ev.id] += power * dt;
       const finished = ev.needWh - deliveredWh[ev.id] <= DONE_TOLERANCE_WH;
       if (power > 0 && finished && remaining > DONE_TOLERANCE_WH) {
-        events.push({ t: tEnd, kind: "complete", evId: ev.id, text: `${ev.driver}'s ${ev.model} is fully charged`, tone: "good" });
+        events.push({ t: tEnd, kind: "complete", evId: ev.id, text: `${ev.model} на ${ev.driver} е заредена докрай`, tone: "good" });
       }
     }
     chargerW[charger.id] = power;
@@ -252,12 +253,12 @@ export function step(scenario: Scenario, state: SimState, controls: Controls): S
   const costEur = kwh >= 0 ? kwh * series.importPrice[i] : kwh * series.exportPrice[i];
 
   if (overload) {
-    events.push({ t, kind: "overload", text: `Grid import ${(gridW / 1000).toFixed(0)} kW is above the ${site.importLimitW / 1000} kW connection`, tone: "bad" });
+    events.push({ t, kind: "overload", text: `Мощността от мрежата ${(gridW / 1000).toFixed(0)} kW надхвърля присъединяването от ${site.importLimitW / 1000} kW`, tone: "bad" });
   }
   const { comfortMinC, comfortMaxC } = site.hvac;
   const wasComfortable = state.indoorC >= comfortMinC - 0.05 && state.indoorC <= comfortMaxC + 0.05;
   if (series.occupied[i] && wasComfortable && (indoorC > comfortMaxC + 0.05 || indoorC < comfortMinC - 0.05)) {
-    events.push({ t: tEnd, kind: "comfort", text: `Office is ${indoorC.toFixed(1)} °C, outside the ${comfortMinC}–${comfortMaxC} °C comfort band`, tone: "warn" });
+    events.push({ t: tEnd, kind: "comfort", text: `В офиса е ${formatNumber(indoorC, 1)} °C, извън комфорта ${comfortMinC}–${comfortMaxC} °C`, tone: "warn" });
   }
 
   // Cars that leave at the end of this interval take their charge with them.
@@ -271,8 +272,8 @@ export function step(scenario: Scenario, state: SimState, controls: Controls): S
         kind: "departure",
         evId: ev.id,
         text: ok
-          ? `${ev.driver} left on time with ${(got / 1000).toFixed(0)} kWh`
-          : `${ev.driver} left ${((ev.needWh - got) / 1000).toFixed(1)} kWh short`,
+          ? `${ev.driver} тръгна навреме с ${(got / 1000).toFixed(0)} kWh`
+          : `${ev.driver} тръгна с недостиг ${formatNumber((ev.needWh - got) / 1000, 1)} kWh`,
         tone: ok ? "good" : "bad",
       });
       for (const charger of scenario.chargers) if (nextPlugs[charger.id] === ev.id) nextPlugs[charger.id] = null;

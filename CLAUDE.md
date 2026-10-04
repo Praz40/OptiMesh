@@ -29,12 +29,13 @@ contracts/             JSON Schemas generated from app/schemas.py, plus examples
 docs/contracts.md      device contract for the hardware team
 infra/mosquitto/       local broker config (anonymous, localhost only)
 scripts/               GitHub backlog setup and config validation (run in CI)
+game/                  OptiMesh Game: Daniel's offline Godot 4.5 exhibition game, imported with history (not in CI)
 ```
 
 ## Routes and auth state
 
 - `/api/v1/...` (sites, snapshot, measurements, telemetry, commands, WebSocket `/api/v1/sites/{id}/live`, status): **no authentication yet**. Any client that reaches the API can read every site and send commands. Keep it on localhost or a trusted LAN.
-- `/sites` (`POST /sites`, `POST /sites/{id}/devices`, `GET /sites/{id}/measurements`): require a Supabase bearer token (`app/auth.py`) and check `Site.owner_id` (`app/registry.py`). Without a token they answer 401; without `SUPABASE_URL` they fail closed with 503.
+- `/sites` (`GET /sites`, `POST /sites`, `GET /sites/{id}/devices`, `POST /sites/{id}/devices`, `GET /sites/{id}/measurements`): require a Supabase bearer token (`app/auth.py`) and check `Site.owner_id` (`app/registry.py`). Without a token they answer 401; without `SUPABASE_URL` they fail closed with 503.
 - Issue #3 extends verification to `/api/v1`, the WebSocket and commands. Do not add or remove auth on existing routes as a side effect of another issue.
 - `/health` (liveness) and `/ready` (database) are public.
 
@@ -77,7 +78,11 @@ After changing a Pydantic contract run `uv run --frozen python -m app.export_con
   MQTT for the live dashboard; `app/sim` replays a whole scenario day in memory for the manual/Autopilot comparison.
 - `app/sim` stays pure and deterministic. Never weaken the limits enforced in `step()`.
   The Autopilot may read `solar_actual_kw` only for the current step. Convert kW/kWh to W/Wh at the API boundary.
-- UI text in Bulgarian (team decision). The current dashboard strings are still English.
+- `game/` is Daniel's Godot project, imported from DGtao13/OptiMesh-Game with its history. CI does not build or test
+  it. Do not change anything under `game/` as a side effect of other work; its scenario and numbers are not
+  comparable with `app/sim` or the `/simulator` game.
+- UI text in Bulgarian (team decision). Since PR #38 the dashboard and the `/simulator` game are in Bulgarian; the seed
+  site and device names (`app/seed.py`) and the API's error messages are still English.
 - No new dependency without saying why.
 
 ## Working style
