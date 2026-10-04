@@ -6,7 +6,7 @@ OptiMesh is an energy autopilot for one site (a home, a workshop or an office): 
 
 [![CI](https://github.com/Praz40/OptiMesh/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Praz40/OptiMesh/actions/workflows/ci.yml?query=branch%3Amain)
 
-This README is in English apart from the short English summary below; the demo runbook [docs/DEMO.md](docs/DEMO.md) and the project report [docs/REPORT.md](docs/REPORT.md) are in Bulgarian.
+This README is in English, including the short summary below; the demo runbook [docs/DEMO.md](docs/DEMO.md) and the project report [docs/REPORT.md](docs/REPORT.md) are in Bulgarian.
 
 Final presentation (PowerPoint): [docs/presentation/OptiMesh-presentation.pptx](docs/presentation/OptiMesh-presentation.pptx).
 
